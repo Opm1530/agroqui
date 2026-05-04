@@ -86,7 +86,7 @@ router.post('/webhook', async (req: Request, res: Response) => {
   try {
     switch (event.type) {
       case 'checkout.session.completed': {
-        const session = event.data.object as Stripe.CheckoutSession
+        const session = event.data.object as Stripe.Checkout.Session
         const { planId, producerId, cooperativeId } = session.metadata ?? {}
         const customerId = session.customer as string
         const subscriptionId = session.subscription as string
