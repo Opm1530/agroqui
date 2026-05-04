@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
@@ -35,7 +35,7 @@ const planFeatureLabels: Record<string, string> = {
   hasPrioritySupport: 'Suporte prioritário',
 }
 
-export default function RegisterPage() {
+function RegisterContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const preselectedPlanId = searchParams.get('planId')
@@ -290,5 +290,13 @@ export default function RegisterPage() {
         )}
       </div>
     </div>
+  )
+}
+
+export default function RegisterPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen bg-gradient-to-br from-primary-50 to-green-100" />}>
+      <RegisterContent />
+    </Suspense>
   )
 }
