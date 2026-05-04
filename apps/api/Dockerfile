@@ -38,9 +38,6 @@ COPY --from=builder /app/apps/api/prisma ./prisma
 # Copy node_modules (hoisted — contains @prisma/client, etc.)
 COPY --from=builder /app/node_modules ./node_modules
 
-# Copy api-level node_modules if any local ones exist
-COPY --from=builder /app/apps/api/node_modules ./apps/api/node_modules 2>/dev/null || true
-
 # Copy entrypoint
 COPY apps/api/entrypoint.sh ./entrypoint.sh
 RUN chmod +x entrypoint.sh
