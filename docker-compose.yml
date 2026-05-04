@@ -9,8 +9,7 @@ services:
     environment:
       NODE_ENV: production
       PORT: 3001
-      # Usa o postgres e redis já existentes na VPS (docker-postgres-1 / docker-redis-1)
-      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@docker-postgres-1:5432/${POSTGRES_DB}
+      DATABASE_URL: ${DATABASE_URL}
       REDIS_URL: redis://docker-redis-1:6379
       JWT_SECRET: ${JWT_SECRET}
       JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-7d}
