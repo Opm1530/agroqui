@@ -9,7 +9,7 @@ COPY apps/web/package*.json ./apps/web/
 COPY packages/ ./packages/
 
 # Install dependencies
-RUN npm ci --workspace=@cdc/web --include-workspace-root
+RUN npm install --workspace=@cdc/web --include-workspace-root
 
 # Copy web source
 COPY apps/web/ ./apps/web/

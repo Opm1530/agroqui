@@ -9,7 +9,7 @@ COPY apps/api/package*.json ./apps/api/
 COPY packages/ ./packages/
 
 # Install ALL dependencies (dev included for tsc + prisma generate)
-RUN npm ci --workspace=@cdc/api --include-workspace-root
+RUN npm install --workspace=@cdc/api --include-workspace-root
 
 # Copy API source
 COPY apps/api/ ./apps/api/
