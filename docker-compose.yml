@@ -1,0 +1,93 @@
+services:
+
+  # ── PostgreSQL ───────────────────────────────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-contador_do_campo}
+      POSTGRES_USER: ${POSTGRES_USER:-cdc}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - internal
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-cdc} -d ${POSTGRES_DB:-contador_do_campo}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── Redis ────────────────────────────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+    networks:
+      - internal
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── API (interna — nunca exposta ao NPM nem à internet) ──────────────────────
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      PORT: 3001
+      DATABASE_URL: postgresql://${POSTGRES_USER:-cdc}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-contador_do_campo}
+      REDIS_URL: redis://redis:6379
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-7d}
+      FRONTEND_URL: ${FRONTEND_URL}
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-}
+      AWS_REGION: ${AWS_REGION:-us-east-1}
+      AWS_S3_BUCKET: ${AWS_S3_BUCKET:-}
+    networks:
+      - internal   # só rede interna — não acessível de fora
+    expose:
+      - "3001"
+
+  # ── Web (Next.js — único serviço exposto ao NPM) ──────────────────────────
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      - api
+    environment:
+      NODE_ENV: production
+      # Servidor Next.js resolve este endereço internamente (sem NEXT_PUBLIC_)
+      API_URL: http://api:3001
+    networks:
+      - internal
+      - docker_internal   # visível pelo Nginx Proxy Manager
+    expose:
+      - "3000"
+
+networks:
+  # Rede interna privada entre os serviços deste projeto
+  internal:
+    driver: bridge
+
+  # Rede compartilhada com o Nginx Proxy Manager e Evolution API
+  docker_internal:
+    external: true
+
+volumes:
+  postgres_data:
+  redis_data:

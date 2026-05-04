@@ -1,0 +1,398 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ─── Enums ────────────────────────────────────────────────────────────────────
+
+enum UserRole {
+  SUPER_ADMIN
+  ADMIN
+  COOPERATIVE
+  PRODUCER
+}
+
+enum PlanType {
+  BASIC
+  PRO
+  COOPERATIVE
+  CUSTOM
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  INACTIVE
+  TRIALING
+  PAST_DUE
+  CANCELED
+}
+
+enum EntryType {
+  INCOME
+  EXPENSE
+}
+
+enum EntryCategory {
+  DEFENSIVE
+  FERTILIZER
+  SEED
+  FUEL
+  MACHINERY_MAINTENANCE
+  LABOR
+  LEASE
+  FREIGHT_DRYING
+  PRODUCTION_SALE
+  OTHER_INCOME
+  OTHER_EXPENSE
+}
+
+enum EntryStatus {
+  PENDING
+  CONFIRMED
+  REJECTED
+}
+
+enum DocumentType {
+  INVOICE_PHOTO
+  INVOICE_XML
+  GENERATED_PDF
+  OTHER
+}
+
+enum DocumentStatus {
+  PENDING_OCR
+  OCR_DONE
+  ERROR
+}
+
+enum HarvestStatus {
+  PLANNING
+  ACTIVE
+  HARVESTED
+  CLOSED
+}
+
+enum AlertType {
+  COST_ABOVE_TARGET
+  LOW_BALANCE
+  INSTALLMENT_DUE
+  CUSTOM
+}
+
+enum WhatsappProvider {
+  EVOLUTION
+  OFFICIAL
+}
+
+enum AiProvider {
+  OPENAI
+  ANTHROPIC
+}
+
+// ─── Settings (global, stored as key-value) ───────────────────────────────────
+
+model Setting {
+  id        String   @id @default(cuid())
+  key       String   @unique
+  value     String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("settings")
+}
+
+// ─── Plans ────────────────────────────────────────────────────────────────────
+
+model Plan {
+  id                  String    @id @default(cuid())
+  name                String
+  type                PlanType
+  priceMonthly        Float
+  maxProperties       Int       @default(1)
+  maxUsers            Int       @default(1)   // for cooperatives: max producers
+  hasOcr              Boolean   @default(false)
+  hasAiAgent          Boolean   @default(false)
+  hasAutoDre          Boolean   @default(false)
+  hasAlerts           Boolean   @default(false)
+  hasWhitelabel       Boolean   @default(false)
+  hasPrioritySupport  Boolean   @default(false)
+  isActive            Boolean   @default(true)
+  stripePriceId       String?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  subscriptions Subscription[]
+  cooperatives  Cooperative[]
+
+  @@map("plans")
+}
+
+// ─── Users ────────────────────────────────────────────────────────────────────
+
+model User {
+  id           String   @id @default(cuid())
+  name         String
+  email        String   @unique
+  passwordHash String
+  role         UserRole @default(PRODUCER)
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  producer    Producer?
+  cooperative Cooperative?
+
+  @@map("users")
+}
+
+// ─── Cooperatives ─────────────────────────────────────────────────────────────
+
+model Cooperative {
+  id          String   @id @default(cuid())
+  userId      String   @unique
+  user        User     @relation(fields: [userId], references: [id])
+  name        String
+  cnpj        String?  @unique
+  subdomain   String   @unique
+  logoUrl     String?
+  primaryColor String? @default("#16a34a")
+  planId      String
+  plan        Plan     @relation(fields: [planId], references: [id])
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  producers     Producer[]
+  subscriptions Subscription[]
+
+  @@map("cooperatives")
+}
+
+// ─── Producers ────────────────────────────────────────────────────────────────
+
+model Producer {
+  id            String    @id @default(cuid())
+  userId        String    @unique
+  user          User      @relation(fields: [userId], references: [id])
+  cpfCnpj       String?
+  whatsapp      String    @unique
+  cooperativeId String?
+  cooperative   Cooperative? @relation(fields: [cooperativeId], references: [id])
+  isActive      Boolean   @default(true)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  subscriptions  Subscription[]
+  properties     Property[]
+  documents      Document[]
+  alerts         Alert[]
+  agentSessions  AgentSession[]
+
+  @@map("producers")
+}
+
+// ─── Subscriptions ────────────────────────────────────────────────────────────
+
+model Subscription {
+  id                   String             @id @default(cuid())
+  producerId           String?
+  producer             Producer?          @relation(fields: [producerId], references: [id])
+  cooperativeId        String?
+  cooperative          Cooperative?       @relation(fields: [cooperativeId], references: [id])
+  planId               String
+  plan                 Plan               @relation(fields: [planId], references: [id])
+  status               SubscriptionStatus @default(TRIALING)
+  stripeCustomerId     String?
+  stripeSubscriptionId String?
+  currentPeriodStart   DateTime?
+  currentPeriodEnd     DateTime?
+  cancelAtPeriodEnd    Boolean            @default(false)
+  createdAt            DateTime           @default(now())
+  updatedAt            DateTime           @updatedAt
+
+  @@map("subscriptions")
+}
+
+// ─── Properties ───────────────────────────────────────────────────────────────
+
+model Property {
+  id         String   @id @default(cuid())
+  producerId String
+  producer   Producer @relation(fields: [producerId], references: [id])
+  name       String
+  hectares   Float?
+  state      String?
+  city       String?
+  isActive   Boolean  @default(true)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  harvests Harvest[]
+  plots    Plot[]
+
+  @@map("properties")
+}
+
+// ─── Harvests ─────────────────────────────────────────────────────────────────
+
+model Harvest {
+  id             String        @id @default(cuid())
+  propertyId     String
+  property       Property      @relation(fields: [propertyId], references: [id])
+  crop           String
+  year           String
+  targetCostPerHa Float?
+  status         HarvestStatus @default(PLANNING)
+  startedAt      DateTime?
+  finishedAt     DateTime?
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  entries Entry[]
+
+  @@map("harvests")
+}
+
+// ─── Plots (talhões) ─────────────────────────────────────────────────────────
+
+model Plot {
+  id           String   @id @default(cuid())
+  propertyId   String
+  property     Property @relation(fields: [propertyId], references: [id])
+  name         String
+  hectares     Float?
+  currentCrop  String?
+  color        String?  // hex color for map display, e.g. "#16a34a"
+  boundary     Json?    // GeoJSON polygon coordinates [[lng,lat], ...]
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  entries Entry[]
+
+  @@map("plots")
+}
+
+// ─── Entries (lancamentos) ────────────────────────────────────────────────────
+
+model Entry {
+  id          String        @id @default(cuid())
+  harvestId   String
+  harvest     Harvest       @relation(fields: [harvestId], references: [id])
+  plotId      String?
+  plot        Plot?         @relation(fields: [plotId], references: [id])
+  documentId  String?
+  document    Document?     @relation(fields: [documentId], references: [id])
+  type        EntryType
+  category    EntryCategory
+  amount      Float
+  date        DateTime
+  supplier    String?
+  supplierCnpj String?
+  description String?
+  status      EntryStatus   @default(CONFIRMED)
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  @@map("entries")
+}
+
+// ─── Documents ────────────────────────────────────────────────────────────────
+
+model Document {
+  id         String         @id @default(cuid())
+  producerId String
+  producer   Producer       @relation(fields: [producerId], references: [id])
+  type       DocumentType
+  s3Key      String
+  s3Url      String
+  ocrText    String?
+  ocrData    Json?
+  status     DocumentStatus @default(PENDING_OCR)
+  createdAt  DateTime       @default(now())
+  updatedAt  DateTime       @updatedAt
+
+  entries Entry[]
+
+  @@map("documents")
+}
+
+// ─── Alerts ───────────────────────────────────────────────────────────────────
+
+model Alert {
+  id         String    @id @default(cuid())
+  producerId String
+  producer   Producer  @relation(fields: [producerId], references: [id])
+  type       AlertType
+  message    String
+  isRead     Boolean   @default(false)
+  sentAt     DateTime?
+  createdAt  DateTime  @default(now())
+
+  @@map("alerts")
+}
+
+// ─── Agent Sessions ───────────────────────────────────────────────────────────
+
+model AgentSession {
+  id         String   @id @default(cuid())
+  producerId String
+  producer   Producer @relation(fields: [producerId], references: [id])
+  messages   Json     @default("[]")
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@map("agent_sessions")
+}
+
+// ─── Supplier Cache (for auto-classification) ─────────────────────────────────
+
+model SupplierCache {
+  id          String        @id @default(cuid())
+  cnpj        String        @unique
+  // Raw razão social from the NF
+  name        String?
+  // Nome fantasia from BrasilAPI (preferred display name)
+  tradeName   String?
+  // Location from BrasilAPI
+  city        String?
+  state       String?
+  category    EntryCategory
+  usageCount  Int           @default(1)
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  @@map("supplier_cache")
+}
+
+// ─── Price Index ──────────────────────────────────────────────────────────────
+// Aggregated regional price data extracted from producer invoices.
+// Individual producer data is never exposed — only aggregated averages.
+
+model PriceIndex {
+  id           String        @id @default(cuid())
+  // Normalized product name (e.g. "Diesel S10", "Ureia 45%", "Glifosato 480")
+  product      String
+  category     EntryCategory
+  // Location from producer's property
+  city         String?
+  state        String
+  // Extracted unit price
+  pricePerUnit Float
+  unit         String?       // "L", "sc60kg", "kg", "t", "unid"
+  quantity     Float?        // how much was purchased
+  totalAmount  Float?        // total invoice value for that item
+  supplier     String?
+  supplierCnpj String?
+  // Reference to originating document (for audit/dedup)
+  documentId   String?
+  date         DateTime
+  createdAt    DateTime      @default(now())
+
+  @@index([category, state, date])
+  @@index([product, state, date])
+  @@index([product, city, date])
+  @@map("price_index")
+}
