@@ -35,7 +35,12 @@ COPY --from=builder /app/apps/api/dist ./dist
 # Copy prisma schema + migrations (needed for migrate deploy)
 COPY --from=builder /app/apps/api/prisma ./prisma
 
-# Copy node_modules (hoisted — contains @prisma/client, etc.)
+# Copy prisma.config.ts so Prisma 7 can find datasource.url at runtime
+# dotenv.config() inside it silently skips if .env is absent — process.env.DATABASE_URL
+# (injected by docker-compose) is used directly.
+COPY apps/api/prisma.config.ts ./prisma.config.ts
+
+# Copy node_modules (hoisted — contains @prisma/client, prisma jiti runner, etc.)
 COPY --from=builder /app/node_modules ./node_modules
 
 # Copy entrypoint
