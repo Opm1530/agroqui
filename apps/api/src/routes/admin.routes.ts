@@ -197,6 +197,42 @@ router.get('/producers', async (req, res, next) => {
   }
 })
 
+// ─── Complimentary access ─────────────────────────────────────────────────────
+
+router.post('/producers/:id/complimentary', requireSuperAdmin, async (req, res, next) => {
+  try {
+    const subscription = await prisma.subscription.findFirst({
+      where: { producerId: req.params.id },
+      orderBy: { createdAt: 'desc' },
+    })
+    if (!subscription) return res.status(404).json({ error: 'Subscription not found' })
+    const updated = await prisma.subscription.update({
+      where: { id: subscription.id },
+      data: { status: 'COMPLIMENTARY' },
+    })
+    res.json(updated)
+  } catch (err) {
+    next(err)
+  }
+})
+
+router.delete('/producers/:id/complimentary', requireSuperAdmin, async (req, res, next) => {
+  try {
+    const subscription = await prisma.subscription.findFirst({
+      where: { producerId: req.params.id },
+      orderBy: { createdAt: 'desc' },
+    })
+    if (!subscription) return res.status(404).json({ error: 'Subscription not found' })
+    const updated = await prisma.subscription.update({
+      where: { id: subscription.id },
+      data: { status: 'CANCELED' },
+    })
+    res.json(updated)
+  } catch (err) {
+    next(err)
+  }
+})
+
 // ─── Cooperatives (admin view) ────────────────────────────────────────────────
 
 router.get('/cooperatives', async (req, res, next) => {

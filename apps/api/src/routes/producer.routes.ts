@@ -1,6 +1,7 @@
 import { Router } from 'express'
 import { z } from 'zod'
 import { authenticate, AuthRequest } from '../middleware/auth'
+import { requireActiveSubscription } from '../middleware/subscription'
 import { prisma } from '../config/prisma'
 import { EntryCategory, EntryType, HarvestStatus } from '@prisma/client'
 import { hashPassword } from '../services/auth.service'
@@ -8,6 +9,7 @@ import { UserRole } from '@prisma/client'
 
 const router = Router()
 router.use(authenticate)
+router.use(requireActiveSubscription)
 
 function getProducerId(req: AuthRequest): string {
   if (!req.user?.producerId) throw new Error('Producer not found')

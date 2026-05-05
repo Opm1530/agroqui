@@ -28,6 +28,7 @@ enum SubscriptionStatus {
   TRIALING
   PAST_DUE
   CANCELED
+  COMPLIMENTARY
 }
 
 enum EntryType {

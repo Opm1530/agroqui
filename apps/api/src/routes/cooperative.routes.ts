@@ -1,12 +1,14 @@
 import { Router } from 'express'
 import { z } from 'zod'
 import { authenticate, requireCooperative, AuthRequest } from '../middleware/auth'
+import { requireActiveSubscription } from '../middleware/subscription'
 import { prisma } from '../config/prisma'
 import { hashPassword } from '../services/auth.service'
 import { UserRole, HarvestStatus, EntryType } from '@prisma/client'
 
 const router = Router()
 router.use(authenticate, requireCooperative)
+router.use(requireActiveSubscription)
 
 function getCooperativeId(req: AuthRequest): string {
   if (!req.user?.cooperativeId) throw new Error('Cooperative not found')
