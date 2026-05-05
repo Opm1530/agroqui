@@ -31,8 +31,11 @@ ENV HOSTNAME=0.0.0.0
 
 # Standalone output already bundles only needed node_modules
 COPY --from=builder /app/apps/web/.next/standalone ./
-COPY --from=builder /app/apps/web/.next/static ./.next/static
-COPY --from=builder /app/apps/web/public ./public
+
+# In a monorepo, server.js lives at apps/web/server.js and expects
+# static + public relative to that path, NOT the container root
+COPY --from=builder /app/apps/web/.next/static ./apps/web/.next/static
+COPY --from=builder /app/apps/web/public ./apps/web/public
 
 EXPOSE 3000
 
