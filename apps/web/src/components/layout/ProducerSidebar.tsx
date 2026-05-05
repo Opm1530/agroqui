@@ -43,7 +43,7 @@ export function ProducerSidebar() {
   return (
     <aside
       className={clsx(
-        'bg-white border-r border-gray-100 h-screen sticky top-0 flex flex-col shrink-0',
+        'hidden md:flex bg-white border-r border-gray-100 h-screen sticky top-0 flex-col shrink-0',
         'transition-[width] duration-300 ease-in-out',
         collapsed ? 'w-[64px]' : 'w-[220px]'
       )}
