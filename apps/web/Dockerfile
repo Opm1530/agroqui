@@ -14,6 +14,11 @@ RUN npm install --workspace=@cdc/web --include-workspace-root
 # Copy web source
 COPY apps/web/ ./apps/web/
 
+# API_URL must be available at build time so Next.js compiles the correct
+# rewrite destination into the route manifest (rewrites are evaluated during
+# next build, not at runtime)
+ENV API_URL=http://api:3001
+
 # Build Next.js (output: standalone)
 WORKDIR /app/apps/web
 RUN npm run build
