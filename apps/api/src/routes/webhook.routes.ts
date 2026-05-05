@@ -114,7 +114,7 @@ router.post('/whatsapp', async (req: Request, res: Response) => {
 
     // Check subscription is active
     const subscription = await prisma.subscription.findFirst({
-      where: { producerId: producer.id, status: { in: ['ACTIVE', 'TRIALING'] } },
+      where: { producerId: producer.id, status: { in: ['ACTIVE', 'TRIALING', 'COMPLIMENTARY'] } },
       include: { plan: true },
     })
 
