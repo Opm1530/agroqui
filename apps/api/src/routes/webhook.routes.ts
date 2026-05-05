@@ -11,6 +11,32 @@ import { DocumentType, DocumentStatus, EntryCategory, EntryType, HarvestStatus }
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const { PDFParse } = require('pdf-parse') as { PDFParse: new (opts: { data: Buffer }) => { getText(): Promise<{ text: string }> } }
 
+// ── WhatsApp number normalisation ────────────────────────────────────────────
+// Brazil added a 9th digit to mobile numbers progressively from 2012.
+// Evolution API may send either the 12-digit (old) or 13-digit (new) form.
+// We generate both variants so the DB lookup always succeeds regardless of
+// how the number was registered or how the carrier delivered it.
+function buildWhatsappVariants(number: string): string[] {
+  const digits = number.replace(/\D/g, '')
+  const variants = new Set([digits])
+
+  if (digits.startsWith('55')) {
+    if (digits.length === 13) {
+      // 55 + DDD(2) + 9 + XXXXXXXX(8) → also try without the leading 9
+      // e.g. 5541999999999 → 554199999999
+      const without9 = digits.slice(0, 4) + digits.slice(5)
+      variants.add(without9)
+    } else if (digits.length === 12) {
+      // 55 + DDD(2) + XXXXXXXX(8) → also try with a leading 9
+      // e.g. 554199999999 → 5541999999999
+      const with9 = digits.slice(0, 4) + '9' + digits.slice(4)
+      variants.add(with9)
+    }
+  }
+
+  return [...variants]
+}
+
 // ── Pending invoice stored in session messages ────────────────────────────────
 // role: 'pending_invoice', content: JSON string of PendingInvoice
 interface PendingInvoice {
@@ -56,9 +82,14 @@ router.post('/whatsapp', async (req: Request, res: Response) => {
       message?.buttonsResponseMessage?.selectedButtonId ??
       message?.listResponseMessage?.singleSelectReply?.selectedRowId
 
+    // Build WhatsApp number variants to handle Brazil's 9th-digit ambiguity.
+    // Some carriers/devices send 12-digit numbers (without 9), others send 13.
+    // We try both so a producer registered with either format is always found.
+    const fromVariants = buildWhatsappVariants(from)
+
     // Verify this number is registered in the system
-    const producer = await prisma.producer.findUnique({
-      where: { whatsapp: from },
+    const producer = await prisma.producer.findFirst({
+      where: { whatsapp: { in: fromVariants } },
       include: {
         user: { select: { name: true } },
         properties: {

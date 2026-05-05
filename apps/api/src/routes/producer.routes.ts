@@ -396,10 +396,13 @@ export async function registerProducer(req: any, res: any, next: any) {
 
     // Normalize: strip everything except digits
     const whatsapp = data.whatsapp.replace(/\D/g, '')
-    // Validate Brazilian mobile: 55 + 2-digit DDD + 9 + 8 digits = 13 total
-    if (!/^55\d{2}9\d{8}$/.test(whatsapp)) {
+    // Accept 13-digit (55+DDD+9+8) and 12-digit (55+DDD+8) Brazilian numbers.
+    // Some regions/carriers still operate without the 9th digit on WhatsApp.
+    const valid13 = /^55\d{2}9\d{8}$/.test(whatsapp) // new format: 5541999999999
+    const valid12 = /^55\d{2}\d{8}$/.test(whatsapp)   // old format: 554199999999
+    if (!valid13 && !valid12) {
       return res.status(400).json({
-        error: 'WhatsApp inválido. Use o formato: 5511999999999 (DDI 55 + DDD + 9 dígitos do celular)'
+        error: 'WhatsApp inválido. Use o formato com DDI: 5511999999999 (55 + DDD + número)'
       })
     }
 

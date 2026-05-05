@@ -14,7 +14,7 @@ import Link from 'next/link'
 const schema = z.object({
   name: z.string().min(2, 'Nome muito curto'),
   email: z.string().email('E-mail inválido'),
-  whatsapp: z.string().regex(/^55\d{2}9\d{8}$/, 'Formato: 5511999999999 (DDI 55 + DDD + 9 dígitos)'),
+  whatsapp: z.string().regex(/^55\d{2}9?\d{8}$/, 'Formato: 5511999999999 (DDI 55 + DDD + número)'),
   cpfCnpj: z.string().optional(),
   password: z.string().min(8, 'Mínimo 8 caracteres'),
   passwordConfirm: z.string(),
