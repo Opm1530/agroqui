@@ -6,6 +6,7 @@ import { api, formatCurrency, formatDate } from '@/lib/api'
 import { toast } from 'sonner'
 import { Plus, Trash2, FileText, TrendingUp, TrendingDown } from 'lucide-react'
 import { useForm } from 'react-hook-form'
+import { PlanGuard } from '@/components/PlanGuard'
 
 const CATEGORIES = [
   { value: 'DEFENSIVE', label: 'Defensivo' },
@@ -133,6 +134,7 @@ export default function EntriesPage() {
   const entries = entriesData?.entries ?? []
 
   return (
+    <PlanGuard>
     <div>
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-bold text-gray-900">Lançamentos</h1>
@@ -185,5 +187,6 @@ export default function EntriesPage() {
         <NewEntryModal harvests={harvests} plots={plots} onClose={() => setModal(false)} />
       )}
     </div>
+    </PlanGuard>
   )
 }

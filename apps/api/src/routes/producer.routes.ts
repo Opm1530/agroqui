@@ -8,6 +8,33 @@ import { hashPassword } from '../services/auth.service'
 import { UserRole } from '@prisma/client'
 
 const router = Router()
+
+// POST /producer/select-plan — for users who registered without a plan
+// Must be registered BEFORE requireActiveSubscription middleware
+router.post('/select-plan', authenticate, async (req: AuthRequest, res, next) => {
+  try {
+    const { planId } = req.body
+    const plan = await prisma.plan.findUnique({ where: { id: planId, isActive: true } })
+    if (!plan) return res.status(404).json({ error: 'Plano não encontrado' })
+
+    const producer = await prisma.producer.findUnique({ where: { userId: req.user!.id } })
+    if (!producer) return res.status(404).json({ error: 'Producer not found' })
+
+    // Check if already has subscription
+    const existing = await prisma.subscription.findFirst({ where: { producerId: producer.id } })
+    if (existing) {
+      // Update plan
+      const updated = await prisma.subscription.update({ where: { id: existing.id }, data: { planId, status: 'TRIALING' } })
+      return res.json(updated)
+    }
+
+    const subscription = await prisma.subscription.create({
+      data: { producerId: producer.id, planId, status: 'TRIALING' }
+    })
+    res.json(subscription)
+  } catch (err) { next(err) }
+})
+
 router.use(authenticate)
 router.use(requireActiveSubscription)
 
@@ -356,9 +383,9 @@ const registerSchema = z.object({
   name: z.string().min(1),
   email: z.string().email(),
   password: z.string().min(8),
-  whatsapp: z.string().min(10),
+  whatsapp: z.string(),
   cpfCnpj: z.string().optional(),
-  planId: z.string(),
+  planId: z.string().optional(),
   cooperativeId: z.string().optional(),
 })
 
@@ -367,14 +394,26 @@ export async function registerProducer(req: any, res: any, next: any) {
   try {
     const data = registerSchema.parse(req.body)
 
-    const plan = await prisma.plan.findUnique({ where: { id: data.planId, isActive: true } })
-    if (!plan) return res.status(404).json({ error: 'Plan not found' })
+    // Normalize: strip everything except digits
+    const whatsapp = data.whatsapp.replace(/\D/g, '')
+    // Validate Brazilian mobile: 55 + 2-digit DDD + 9 + 8 digits = 13 total
+    if (!/^55\d{2}9\d{8}$/.test(whatsapp)) {
+      return res.status(400).json({
+        error: 'WhatsApp inválido. Use o formato: 5511999999999 (DDI 55 + DDD + 9 dígitos do celular)'
+      })
+    }
+
+    let plan = null
+    if (data.planId) {
+      plan = await prisma.plan.findUnique({ where: { id: data.planId, isActive: true } })
+      if (!plan) return res.status(404).json({ error: 'Plano não encontrado' })
+    }
 
     const existing = await prisma.user.findUnique({ where: { email: data.email } })
     if (existing) return res.status(400).json({ error: 'Email already in use' })
 
-    const existingWa = await prisma.producer.findUnique({ where: { whatsapp: data.whatsapp } })
-    if (existingWa) return res.status(400).json({ error: 'WhatsApp already registered' })
+    const existingWa = await prisma.producer.findUnique({ where: { whatsapp } })
+    if (existingWa) return res.status(400).json({ error: 'Este WhatsApp já está cadastrado' })
 
     const passwordHash = await hashPassword(data.password)
 
@@ -383,16 +422,13 @@ export async function registerProducer(req: any, res: any, next: any) {
         data: { name: data.name, email: data.email, passwordHash, role: UserRole.PRODUCER },
       })
       const producer = await tx.producer.create({
-        data: {
-          userId: user.id,
-          whatsapp: data.whatsapp,
-          cpfCnpj: data.cpfCnpj,
-          cooperativeId: data.cooperativeId,
-        },
+        data: { userId: user.id, whatsapp, cpfCnpj: data.cpfCnpj, cooperativeId: data.cooperativeId },
       })
-      await tx.subscription.create({
-        data: { producerId: producer.id, planId: data.planId, status: 'TRIALING' },
-      })
+      if (plan && data.planId) {
+        await tx.subscription.create({
+          data: { producerId: producer.id, planId: data.planId, status: 'TRIALING' },
+        })
+      }
       return { userId: user.id, producerId: producer.id }
     })
 

@@ -55,7 +55,12 @@ export async function requireActiveSubscription(req: AuthRequest, res: Response,
       })
     }
 
-    // CANCELED, INACTIVE, or no subscription found
+    // No subscription found — let through; frontend handles UI locks via PlanGuard
+    if (status === null) {
+      return next()
+    }
+
+    // CANCELED or INACTIVE — block only when Stripe is active
     return res.status(402).json({
       error: 'Assinatura inativa. Renove seu plano para continuar.',
       code: 'SUBSCRIPTION_REQUIRED',

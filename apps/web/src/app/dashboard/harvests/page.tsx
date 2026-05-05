@@ -7,6 +7,7 @@ import { toast } from 'sonner'
 import { Plus, Leaf, BarChart2 } from 'lucide-react'
 import { useForm } from 'react-hook-form'
 import Link from 'next/link'
+import { PlanGuard } from '@/components/PlanGuard'
 
 function NewHarvestModal({ properties, onClose }: { properties: any[]; onClose: () => void }) {
   const qc = useQueryClient()
@@ -85,6 +86,7 @@ export default function HarvestsPage() {
   })
 
   return (
+    <PlanGuard>
     <div>
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-bold text-gray-900">Safras</h1>
@@ -130,5 +132,6 @@ export default function HarvestsPage() {
         <NewHarvestModal properties={properties} onClose={() => setModal(false)} />
       )}
     </div>
+    </PlanGuard>
   )
 }

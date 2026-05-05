@@ -7,6 +7,7 @@ import { api } from '@/lib/api'
 import { toast } from 'sonner'
 import { Plus, MapPin, Leaf, Rows3, Pencil, X, Map } from 'lucide-react'
 import Link from 'next/link'
+import { PlanGuard } from '@/components/PlanGuard'
 
 // ─── Modals ───────────────────────────────────────────────────────────────────
 
@@ -225,6 +226,7 @@ export default function PropertiesPage() {
   })
 
   return (
+    <PlanGuard>
     <div>
       <div className="flex items-center justify-between mb-6">
         <div>
@@ -259,5 +261,6 @@ export default function PropertiesPage() {
 
       {newModal && <PropertyModal onClose={() => setNewModal(false)} />}
     </div>
+    </PlanGuard>
   )
 }
