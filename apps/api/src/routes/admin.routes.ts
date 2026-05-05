@@ -201,16 +201,31 @@ router.get('/producers', async (req, res, next) => {
 
 router.post('/producers/:id/complimentary', requireSuperAdmin, async (req, res, next) => {
   try {
-    const subscription = await prisma.subscription.findFirst({
+    const existing = await prisma.subscription.findFirst({
       where: { producerId: req.params.id },
       orderBy: { createdAt: 'desc' },
     })
-    if (!subscription) return res.status(404).json({ error: 'Subscription not found' })
-    const updated = await prisma.subscription.update({
-      where: { id: subscription.id },
-      data: { status: 'COMPLIMENTARY' },
+
+    if (existing) {
+      // Already has a subscription — just update the status
+      const updated = await prisma.subscription.update({
+        where: { id: existing.id },
+        data: { status: 'COMPLIMENTARY' },
+      })
+      return res.json(updated)
+    }
+
+    // No subscription yet — create one with the best available plan
+    const plan = await prisma.plan.findFirst({
+      where: { isActive: true, type: { in: ['PRO', 'BASIC'] } },
+      orderBy: { priceMonthly: 'desc' }, // prefer Pro
     })
-    res.json(updated)
+    if (!plan) return res.status(404).json({ error: 'Nenhum plano ativo encontrado para criar a cortesia' })
+
+    const created = await prisma.subscription.create({
+      data: { producerId: req.params.id, planId: plan.id, status: 'COMPLIMENTARY' },
+    })
+    res.json(created)
   } catch (err) {
     next(err)
   }
