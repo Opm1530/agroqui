@@ -3,7 +3,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { api, formatCurrency } from '@/lib/api'
 import { getUser } from '@/lib/auth'
-import { TrendingUp, TrendingDown, Leaf, Bell, MessageSquare } from 'lucide-react'
+import { TrendingUp, TrendingDown, Leaf, Bell, MessageSquare, HeadphonesIcon } from 'lucide-react'
 
 export default function DashboardPage() {
   const user = getUser()
@@ -27,6 +27,11 @@ export default function DashboardPage() {
   })
 
   const unreadAlerts = alerts?.filter((a: any) => !a.isRead).length ?? 0
+
+  const { data: support } = useQuery({
+    queryKey: ['support'],
+    queryFn: () => api.get('/public/support').then((r) => r.data),
+  })
 
   return (
     <div>
@@ -109,6 +114,27 @@ export default function DashboardPage() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Support contact */}
+      {support?.whatsapp && (
+        <a
+          href={`https://wa.me/${support.whatsapp}`}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="card p-4 mb-6 flex items-center gap-3 hover:shadow-md transition-shadow border-green-100 bg-green-50 group"
+        >
+          <div className="w-10 h-10 bg-green-600 rounded-xl flex items-center justify-center shrink-0 group-hover:bg-green-700 transition-colors">
+            <HeadphonesIcon className="w-5 h-5 text-white" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-semibold text-green-900">Precisa de ajuda?</p>
+            <p className="text-xs text-green-700">Entre em contato com o suporte via WhatsApp</p>
+          </div>
+          <span className="text-xs font-medium text-green-700 bg-green-100 px-3 py-1.5 rounded-lg shrink-0">
+            Falar agora
+          </span>
+        </a>
       )}
 
       {/* Alerts */}

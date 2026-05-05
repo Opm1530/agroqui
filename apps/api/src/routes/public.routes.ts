@@ -252,6 +252,16 @@ router.get('/price-index/history', async (req, res, next) => {
   }
 })
 
+// ─── Support contact (public) ─────────────────────────────────────────────────
+router.get('/support', async (req, res, next) => {
+  try {
+    const whatsapp = await getSetting(SettingKeys.SUPPORT_WHATSAPP)
+    res.json({ whatsapp: whatsapp ?? null })
+  } catch (err) {
+    next(err)
+  }
+})
+
 // ─── Price Index stats ────────────────────────────────────────────────────────
 router.get('/price-index/stats', async (req, res, next) => {
   try {
