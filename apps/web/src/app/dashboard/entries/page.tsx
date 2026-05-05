@@ -136,9 +136,9 @@ export default function EntriesPage() {
   return (
     <PlanGuard>
     <div>
-      <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-bold text-gray-900">Lançamentos</h1>
-        <button onClick={() => setModal(true)} className="btn-primary flex items-center gap-2">
+      <div className="flex items-center justify-between gap-3 mb-6 min-w-0">
+        <h1 className="text-2xl font-bold text-gray-900 truncate">Lançamentos</h1>
+        <button onClick={() => setModal(true)} className="btn-primary flex items-center gap-2 shrink-0">
           <Plus className="w-4 h-4" /> Novo Lançamento
         </button>
       </div>

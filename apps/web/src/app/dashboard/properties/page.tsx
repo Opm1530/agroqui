@@ -144,10 +144,10 @@ function PropertyCard({ property }: { property: any }) {
               <span className="badge-gray">{property.state}{property.city ? ` · ${property.city}` : ''}</span>
             )}
           </div>
-          <div className="flex items-center gap-4 mt-1 text-sm text-gray-500">
-            {property.hectares && <span>{property.hectares} ha</span>}
-            <span>{property._count?.harvests ?? 0} safras</span>
-            <span>{property._count?.plots ?? 0} talhões</span>
+          <div className="flex items-center gap-3 mt-1 text-sm text-gray-500 flex-wrap">
+            {property.hectares && <span className="shrink-0">{property.hectares} ha</span>}
+            <span className="shrink-0">{property._count?.harvests ?? 0} safras</span>
+            <span className="shrink-0">{property._count?.plots ?? 0} talhões</span>
           </div>
         </div>
         <div className="flex items-center gap-1">
@@ -228,12 +228,12 @@ export default function PropertiesPage() {
   return (
     <PlanGuard>
     <div>
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">Propriedades</h1>
+      <div className="flex items-center justify-between gap-3 mb-6 min-w-0">
+        <div className="min-w-0">
+          <h1 className="text-2xl font-bold text-gray-900 truncate">Propriedades</h1>
           <p className="text-sm text-gray-500 mt-0.5">Gerencie suas fazendas e talhões</p>
         </div>
-        <button onClick={() => setNewModal(true)} className="btn-primary flex items-center gap-2">
+        <button onClick={() => setNewModal(true)} className="btn-primary flex items-center gap-2 shrink-0">
           <Plus className="w-4 h-4" /> Nova Propriedade
         </button>
       </div>

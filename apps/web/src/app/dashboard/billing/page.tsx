@@ -51,7 +51,7 @@ export default function BillingPage() {
 
   if (isLoading) {
     return (
-      <div className="space-y-4 max-w-2xl">
+      <div className="space-y-4 max-w-2xl w-full">
         {[...Array(2)].map((_, i) => <div key={i} className="card h-32 animate-pulse" />)}
       </div>
     )
@@ -64,7 +64,7 @@ export default function BillingPage() {
   const hasStripe = billingMode?.stripeEnabled && subscription?.stripeSubscriptionId
 
   return (
-    <div className="max-w-2xl">
+    <div className="max-w-2xl w-full">
       <h1 className="text-2xl font-bold text-gray-900 mb-6">Assinatura</h1>
 
       {/* Status banner */}
@@ -94,10 +94,10 @@ export default function BillingPage() {
 
       {/* Plan card */}
       <div className="card p-6 mb-4">
-        <div className="flex items-start justify-between mb-4">
-          <div>
-            <div className="flex items-center gap-2 mb-1">
-              <h2 className="text-lg font-semibold text-gray-900">{plan?.name ?? 'Sem plano'}</h2>
+        <div className="flex items-start justify-between gap-3 mb-4">
+          <div className="min-w-0">
+            <div className="flex items-center gap-2 mb-1 flex-wrap">
+              <h2 className="text-lg font-semibold text-gray-900 truncate">{plan?.name ?? 'Sem plano'}</h2>
               <span className={statusStyle[status]}>{statusLabel[status]}</span>
             </div>
             {plan && (
@@ -107,7 +107,7 @@ export default function BillingPage() {
               </p>
             )}
           </div>
-          <CreditCard className="w-8 h-8 text-gray-300" />
+          <CreditCard className="w-8 h-8 text-gray-300 shrink-0" />
         </div>
 
         {subscription?.currentPeriodEnd && (

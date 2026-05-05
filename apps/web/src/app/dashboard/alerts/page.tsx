@@ -55,9 +55,9 @@ export default function AlertsPage() {
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">Alertas</h1>
+      <div className="flex items-start justify-between gap-3 mb-6 min-w-0">
+        <div className="min-w-0">
+          <h1 className="text-2xl font-bold text-gray-900 truncate">Alertas</h1>
           {unreadCount > 0 && (
             <p className="text-sm text-gray-500 mt-0.5">{unreadCount} não lido{unreadCount > 1 ? 's' : ''}</p>
           )}
@@ -66,10 +66,11 @@ export default function AlertsPage() {
           <button
             onClick={() => markAllRead.mutate()}
             disabled={markAllRead.isPending}
-            className="btn-secondary flex items-center gap-2 text-sm"
+            className="btn-secondary flex items-center gap-2 text-sm shrink-0"
           >
             <CheckCheck className="w-4 h-4" />
-            Marcar todos como lidos
+            <span className="hidden sm:inline">Marcar todos como lidos</span>
+            <span className="sm:hidden">Marcar lidos</span>
           </button>
         )}
       </div>
@@ -103,7 +104,7 @@ export default function AlertsPage() {
                 <Icon className={clsx('w-5 h-5 mt-0.5 shrink-0', iconColor)} />
 
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium">{alert.message}</p>
+                  <p className="text-sm font-medium break-words">{alert.message}</p>
                   <p className="text-xs opacity-60 mt-1">{formatDate(alert.createdAt)}</p>
                 </div>
 

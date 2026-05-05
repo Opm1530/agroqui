@@ -88,9 +88,9 @@ export default function HarvestsPage() {
   return (
     <PlanGuard>
     <div>
-      <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-bold text-gray-900">Safras</h1>
-        <button onClick={() => setModal(true)} className="btn-primary flex items-center gap-2">
+      <div className="flex items-center justify-between gap-3 mb-6 min-w-0">
+        <h1 className="text-2xl font-bold text-gray-900 truncate">Safras</h1>
+        <button onClick={() => setModal(true)} className="btn-primary flex items-center gap-2 shrink-0">
           <Plus className="w-4 h-4" /> Nova Safra
         </button>
       </div>
@@ -104,12 +104,12 @@ export default function HarvestsPage() {
               <div className="w-10 h-10 bg-primary-100 rounded-lg flex items-center justify-center shrink-0">
                 <Leaf className="w-5 h-5 text-primary-700" />
               </div>
-              <div className="flex-1">
-                <div className="flex items-center gap-2 mb-0.5">
-                  <span className="font-semibold text-gray-900">{harvest.crop} {harvest.year}</span>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 mb-0.5 flex-wrap">
+                  <span className="font-semibold text-gray-900 truncate">{harvest.crop} {harvest.year}</span>
                   <span className={statusBadge(harvest.status)}>{statusLabel(harvest.status)}</span>
                 </div>
-                <p className="text-sm text-gray-500">{harvest.property?.name} · {harvest._count?.entries ?? 0} lançamentos</p>
+                <p className="text-sm text-gray-500 truncate">{harvest.property?.name} · {harvest._count?.entries ?? 0} lançamentos</p>
                 {harvest.targetCostPerHa && (
                   <p className="text-xs text-gray-400">Meta: {formatCurrency(harvest.targetCostPerHa)}/ha</p>
                 )}

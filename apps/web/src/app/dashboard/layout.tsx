@@ -22,7 +22,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       <ProducerSidebar />
       <div className="flex-1 flex flex-col overflow-hidden">
         <MobileTopBar />
-        <main className="flex-1 overflow-y-auto p-4 md:p-7 pb-24 md:pb-7">{children}</main>
+        <main className="flex-1 overflow-y-auto overflow-x-hidden p-4 md:p-7 pb-24 md:pb-7">{children}</main>
       </div>
       <MobileBottomNav />
       <PwaInstallBanner />

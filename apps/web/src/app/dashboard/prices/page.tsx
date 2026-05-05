@@ -85,7 +85,7 @@ function PriceHistoryModal({
 
         {/* Stats row */}
         {prices.length > 0 && (
-          <div className="grid grid-cols-4 gap-3 mb-5">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-5">
             {[
               { label: 'Último preço', value: `R$ ${latest?.toFixed(2)}`, highlight: true },
               { label: 'Variação', value: `${trend >= 0 ? '+' : ''}${trend.toFixed(1)}%`, up: trend > 0 },
@@ -293,19 +293,19 @@ export default function PricesPage() {
           </p>
         </div>
         {stats && (
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-4 flex-wrap shrink-0">
             <div className="text-center">
               <p className="text-xl font-bold text-gray-900">{stats.totalSuppliers}</p>
               <p className="text-xs text-gray-400">Estabelecimentos</p>
             </div>
-            <div className="w-px h-8 bg-gray-200" />
+            <div className="w-px h-8 bg-gray-200 hidden sm:block" />
             <div className="text-center">
               <p className="text-xl font-bold text-gray-900">{stats.totalRecords}</p>
               <p className="text-xs text-gray-400">Registros</p>
             </div>
             {stats.lastUpdate && (
               <>
-                <div className="w-px h-8 bg-gray-200" />
+                <div className="w-px h-8 bg-gray-200 hidden sm:block" />
                 <div className="text-center">
                   <p className="text-sm font-bold text-gray-900">
                     {new Date(stats.lastUpdate).toLocaleDateString('pt-BR')}
