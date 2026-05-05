@@ -233,6 +233,42 @@ router.delete('/producers/:id/complimentary', requireSuperAdmin, async (req, res
   }
 })
 
+// ─── Delete producer + user (hard delete, cascades manually) ─────────────────
+
+router.delete('/producers/:id', requireSuperAdmin, async (req, res, next) => {
+  try {
+    const producer = await prisma.producer.findUnique({
+      where: { id: req.params.id },
+      include: { properties: { include: { harvests: true, plots: true } } },
+    })
+    if (!producer) return res.status(404).json({ error: 'Produtor não encontrado' })
+
+    await prisma.$transaction(async (tx) => {
+      // 1. Delete entries and documents per harvest
+      for (const prop of producer.properties) {
+        for (const harvest of prop.harvests) {
+          await tx.entry.deleteMany({ where: { harvestId: harvest.id } })
+        }
+        await tx.harvest.deleteMany({ where: { propertyId: prop.id } })
+        await tx.plot.deleteMany({ where: { propertyId: prop.id } })
+        await tx.property.delete({ where: { id: prop.id } })
+      }
+      // 2. Delete related records
+      await tx.document.deleteMany({ where: { producerId: producer.id } })
+      await tx.alert.deleteMany({ where: { producerId: producer.id } })
+      await tx.agentSession.deleteMany({ where: { producerId: producer.id } })
+      await tx.subscription.deleteMany({ where: { producerId: producer.id } })
+      // 3. Delete producer and user
+      await tx.producer.delete({ where: { id: producer.id } })
+      await tx.user.delete({ where: { id: producer.userId } })
+    })
+
+    res.json({ message: 'Produtor excluído com sucesso' })
+  } catch (err) {
+    next(err)
+  }
+})
+
 // ─── Cooperatives (admin view) ────────────────────────────────────────────────
 
 router.get('/cooperatives', async (req, res, next) => {

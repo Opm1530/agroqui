@@ -3,7 +3,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '@/lib/api'
 import { toast } from 'sonner'
-import { Tractor, Phone, Gift } from 'lucide-react'
+import { Tractor, Phone, Gift, Trash2 } from 'lucide-react'
 
 export default function ProducersPage() {
   const qc = useQueryClient()
@@ -11,6 +11,21 @@ export default function ProducersPage() {
     queryKey: ['admin-producers'],
     queryFn: () => api.get('/admin/producers').then((r) => r.data),
   })
+
+  const deleteProducer = useMutation({
+    mutationFn: (id: string) => api.delete(`/admin/producers/${id}`),
+    onSuccess: () => {
+      toast.success('Produtor excluído.')
+      qc.invalidateQueries({ queryKey: ['admin-producers'] })
+    },
+    onError: (err: any) => toast.error(err.response?.data?.error ?? 'Erro ao excluir'),
+  })
+
+  function confirmDelete(p: any) {
+    if (confirm(`Excluir ${p.user.name} (${p.user.email})?\n\nTodos os dados serão removidos permanentemente.`)) {
+      deleteProducer.mutate(p.id)
+    }
+  }
 
   const grantComplimentary = useMutation({
     mutationFn: (id: string) => api.post(`/admin/producers/${id}/complimentary`),
@@ -92,6 +107,14 @@ export default function ProducersPage() {
               >
                 <Gift className="w-3 h-3" />
                 {isComplimentary ? 'Revogar' : 'Cortesia'}
+              </button>
+              <button
+                onClick={() => confirmDelete(p)}
+                disabled={deleteProducer.isPending}
+                title="Excluir produtor"
+                className="p-1.5 text-gray-300 hover:text-red-500 hover:bg-red-50 rounded-lg border border-transparent hover:border-red-200 transition-colors shrink-0 disabled:opacity-50"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
               </button>
             </div>
           )
