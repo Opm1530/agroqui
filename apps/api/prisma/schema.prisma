@@ -76,6 +76,27 @@ enum HarvestStatus {
   CLOSED
 }
 
+enum ActivityType {
+  PLANTING
+  APPLICATION
+  FUELING
+  HARVEST_OP
+  OTHER
+}
+
+enum StockMovementType {
+  IN
+  OUT
+}
+
+enum ProductUnit {
+  LITER
+  KG
+  SACA_60KG
+  TONELADA
+  UNIDADE
+}
+
 enum AlertType {
   COST_ABOVE_TARGET
   LOW_BALANCE
@@ -191,6 +212,8 @@ model Producer {
   documents      Document[]
   alerts         Alert[]
   agentSessions  AgentSession[]
+  products       Product[]
+  stockItems     StockItem[]
 
   @@map("producers")
 }
@@ -231,8 +254,9 @@ model Property {
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 
-  harvests Harvest[]
-  plots    Plot[]
+  harvests   Harvest[]
+  plots      Plot[]
+  stockItems StockItem[]
 
   @@map("properties")
 }
@@ -252,9 +276,25 @@ model Harvest {
   createdAt      DateTime      @default(now())
   updatedAt      DateTime      @updatedAt
 
-  entries Entry[]
+  entries      Entry[]
+  harvestPlots HarvestPlot[]
+  activities   Activity[]
 
   @@map("harvests")
+}
+
+// ─── HarvestPlot (safra usa X hectares de um talhão) ─────────────────────────
+
+model HarvestPlot {
+  id        String  @id @default(cuid())
+  harvestId String
+  harvest   Harvest @relation(fields: [harvestId], references: [id], onDelete: Cascade)
+  plotId    String
+  plot      Plot    @relation(fields: [plotId], references: [id], onDelete: Cascade)
+  hectares  Float?  // hectares desta safra neste talhão (pode ser < total do talhão)
+
+  @@unique([harvestId, plotId])
+  @@map("harvest_plots")
 }
 
 // ─── Plots (talhões) ─────────────────────────────────────────────────────────
@@ -266,12 +306,14 @@ model Plot {
   name         String
   hectares     Float?
   currentCrop  String?
-  color        String?  // hex color for map display, e.g. "#16a34a"
-  boundary     Json?    // GeoJSON polygon coordinates [[lng,lat], ...]
+  color        String?
+  boundary     Json?
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
-  entries Entry[]
+  entries      Entry[]
+  harvestPlots HarvestPlot[]
+  activities   Activity[]
 
   @@map("plots")
 }
@@ -346,6 +388,93 @@ model AgentSession {
   updatedAt  DateTime @updatedAt
 
   @@map("agent_sessions")
+}
+
+// ─── Products (catálogo de produtos do produtor) ──────────────────────────────
+
+model Product {
+  id         String      @id @default(cuid())
+  producerId String
+  producer   Producer    @relation(fields: [producerId], references: [id])
+  name       String
+  unit       ProductUnit
+  category   EntryCategory
+  isActive   Boolean     @default(true)
+  createdAt  DateTime    @default(now())
+  updatedAt  DateTime    @updatedAt
+
+  stockItems     StockItem[]
+  activityItems  ActivityItem[]
+
+  @@map("products")
+}
+
+// ─── Stock (estoque por propriedade) ─────────────────────────────────────────
+
+model StockItem {
+  id           String   @id @default(cuid())
+  producerId   String
+  producer     Producer @relation(fields: [producerId], references: [id])
+  productId    String
+  product      Product  @relation(fields: [productId], references: [id])
+  propertyId   String
+  property     Property @relation(fields: [propertyId], references: [id])
+  quantity     Float    @default(0)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  movements StockMovement[]
+
+  @@unique([producerId, productId, propertyId])
+  @@map("stock_items")
+}
+
+model StockMovement {
+  id          String            @id @default(cuid())
+  stockItemId String
+  stockItem   StockItem         @relation(fields: [stockItemId], references: [id])
+  type        StockMovementType
+  quantity    Float
+  unitCost    Float?
+  date        DateTime
+  note        String?
+  entryId     String?           // entrada via nota fiscal
+  activityId  String?           // saída via atividade
+  createdAt   DateTime          @default(now())
+
+  @@map("stock_movements")
+}
+
+// ─── Activities (atividades da safra) ────────────────────────────────────────
+
+model Activity {
+  id          String       @id @default(cuid())
+  harvestId   String
+  harvest     Harvest      @relation(fields: [harvestId], references: [id])
+  plotId      String?
+  plot        Plot?        @relation(fields: [plotId], references: [id])
+  type        ActivityType
+  date        DateTime
+  hectares    Float?
+  notes       String?
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  items ActivityItem[]
+
+  @@map("activities")
+}
+
+model ActivityItem {
+  id         String      @id @default(cuid())
+  activityId String
+  activity   Activity    @relation(fields: [activityId], references: [id], onDelete: Cascade)
+  productId  String
+  product    Product     @relation(fields: [productId], references: [id])
+  quantity   Float
+  unit       ProductUnit
+
+  @@map("activity_items")
 }
 
 // ─── Supplier Cache (for auto-classification) ─────────────────────────────────

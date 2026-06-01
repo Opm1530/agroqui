@@ -5,18 +5,21 @@ import { usePathname, useRouter } from 'next/navigation'
 import {
   LayoutDashboard, FileText, Leaf, MapPin, Bell,
   LogOut, Wheat, CreditCard, PanelLeftClose, PanelLeftOpen, TrendingUp,
+  Package, Tractor,
 } from 'lucide-react'
 import { clearAuth } from '@/lib/auth'
 import { clsx } from 'clsx'
 import { useState, useEffect } from 'react'
 
 const nav = [
-  { href: '/dashboard',            icon: LayoutDashboard, label: 'Início' },
-  { href: '/dashboard/harvests',   icon: Leaf,            label: 'Safras' },
-  { href: '/dashboard/entries',    icon: FileText,        label: 'Lançamentos' },
-  { href: '/dashboard/properties', icon: MapPin,          label: 'Propriedades' },
-  { href: '/dashboard/prices',     icon: TrendingUp,      label: 'Base de Preços' },
-  { href: '/dashboard/alerts',     icon: Bell,            label: 'Alertas' },
+  { href: '/dashboard',              icon: LayoutDashboard, label: 'Início' },
+  { href: '/dashboard/harvests',     icon: Leaf,            label: 'Safras' },
+  { href: '/dashboard/activities',   icon: Tractor,         label: 'Atividades' },
+  { href: '/dashboard/stock',        icon: Package,         label: 'Estoque' },
+  { href: '/dashboard/entries',      icon: FileText,        label: 'Lançamentos' },
+  { href: '/dashboard/properties',   icon: MapPin,          label: 'Propriedades' },
+  { href: '/dashboard/prices',       icon: TrendingUp,      label: 'Base de Preços' },
+  { href: '/dashboard/alerts',       icon: Bell,            label: 'Alertas' },
 ]
 
 export function ProducerSidebar() {

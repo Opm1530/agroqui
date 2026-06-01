@@ -3,7 +3,7 @@ import { z } from 'zod'
 import { authenticate, AuthRequest } from '../middleware/auth'
 import { requireActiveSubscription } from '../middleware/subscription'
 import { prisma } from '../config/prisma'
-import { EntryCategory, EntryType, HarvestStatus } from '@prisma/client'
+import { EntryCategory, EntryType, HarvestStatus, ActivityType, ProductUnit } from '@prisma/client'
 import { hashPassword } from '../services/auth.service'
 import { UserRole } from '@prisma/client'
 
@@ -124,6 +124,53 @@ router.put('/harvests/:id', async (req: AuthRequest, res, next) => {
     if (!harvest) return res.status(404).json({ error: 'Harvest not found' })
     const updated = await prisma.harvest.update({ where: { id: req.params.id }, data })
     res.json(updated)
+  } catch (err) { next(err) }
+})
+
+// ─── HarvestPlots (talhões vinculados à safra) ───────────────────────────────
+
+router.get('/harvests/:id/plots', async (req: AuthRequest, res, next) => {
+  try {
+    const producerId = getProducerId(req)
+    const harvest = await prisma.harvest.findFirst({ where: { id: req.params.id, property: { producerId } } })
+    if (!harvest) return res.status(404).json({ error: 'Harvest not found' })
+    const items = await prisma.harvestPlot.findMany({
+      where: { harvestId: req.params.id },
+      include: { plot: { select: { id: true, name: true, hectares: true, color: true } } },
+    })
+    res.json(items)
+  } catch (err) { next(err) }
+})
+
+router.post('/harvests/:id/plots', async (req: AuthRequest, res, next) => {
+  try {
+    const producerId = getProducerId(req)
+    const harvest = await prisma.harvest.findFirst({ where: { id: req.params.id, property: { producerId } } })
+    if (!harvest) return res.status(404).json({ error: 'Harvest not found' })
+    const schema = z.object({
+      plotId: z.string(),
+      hectares: z.number().positive().optional(),
+    })
+    const data = schema.parse(req.body)
+    // Verify plot belongs to same property
+    const plot = await prisma.plot.findFirst({ where: { id: data.plotId, propertyId: harvest.propertyId } })
+    if (!plot) return res.status(404).json({ error: 'Plot not found' })
+    const hp = await prisma.harvestPlot.upsert({
+      where: { harvestId_plotId: { harvestId: req.params.id, plotId: data.plotId } },
+      create: { harvestId: req.params.id, plotId: data.plotId, hectares: data.hectares },
+      update: { hectares: data.hectares },
+    })
+    res.status(201).json(hp)
+  } catch (err) { next(err) }
+})
+
+router.delete('/harvests/:id/plots/:plotId', async (req: AuthRequest, res, next) => {
+  try {
+    const producerId = getProducerId(req)
+    const harvest = await prisma.harvest.findFirst({ where: { id: req.params.id, property: { producerId } } })
+    if (!harvest) return res.status(404).json({ error: 'Harvest not found' })
+    await prisma.harvestPlot.deleteMany({ where: { harvestId: req.params.id, plotId: req.params.plotId } })
+    res.status(204).send()
   } catch (err) { next(err) }
 })
 
@@ -438,5 +485,246 @@ export async function registerProducer(req: any, res: any, next: any) {
     res.status(201).json(result)
   } catch (err) { next(err) }
 }
+
+// ─── Products (catálogo de produtos) ─────────────────────────────────────────
+
+router.get('/products', async (req: AuthRequest, res, next) => {
+  try {
+    const producerId = getProducerId(req)
+    const products = await prisma.product.findMany({
+      where: { producerId, isActive: true },
+      orderBy: { name: 'asc' },
+    })
+    res.json(products)
+  } catch (err) { next(err) }
+})
+
+router.post('/products', async (req: AuthRequest, res, next) => {
+  try {
+    const producerId = getProducerId(req)
+    const schema = z.object({
+      name: z.string().min(1),
+      unit: z.nativeEnum(ProductUnit),
+      category: z.nativeEnum(EntryCategory),
+    })
+    const data = schema.parse(req.body)
+    const product = await prisma.product.create({ data: { ...data, producerId } })
+    res.status(201).json(product)
+  } catch (err) { next(err) }
+})
+
+router.put('/products/:id', async (req: AuthRequest, res, next) => {
+  try {
+    const producerId = getProducerId(req)
+    const schema = z.object({
+      name: z.string().min(1).optional(),
+      unit: z.nativeEnum(ProductUnit).optional(),
+      category: z.nativeEnum(EntryCategory).optional(),
+      isActive: z.boolean().optional(),
+    })
+    const data = schema.parse(req.body)
+    const product = await prisma.product.findFirst({ where: { id: req.params.id, producerId } })
+    if (!product) return res.status(404).json({ error: 'Product not found' })
+    const updated = await prisma.product.update({ where: { id: req.params.id }, data })
+    res.json(updated)
+  } catch (err) { next(err) }
+})
+
+// ─── Stock ────────────────────────────────────────────────────────────────────
+
+router.get('/stock', async (req: AuthRequest, res, next) => {
+  try {
+    const producerId = getProducerId(req)
+    const { propertyId } = req.query
+    const items = await prisma.stockItem.findMany({
+      where: { producerId, ...(propertyId ? { propertyId: String(propertyId) } : {}) },
+      include: {
+        product: true,
+        property: { select: { id: true, name: true } },
+      },
+      orderBy: { product: { name: 'asc' } },
+    })
+    res.json(items)
+  } catch (err) { next(err) }
+})
+
+// Entrada manual de estoque
+router.post('/stock/entry', async (req: AuthRequest, res, next) => {
+  try {
+    const producerId = getProducerId(req)
+    const schema = z.object({
+      productId: z.string(),
+      propertyId: z.string(),
+      quantity: z.number().positive(),
+      unitCost: z.number().positive().optional(),
+      date: z.string(),
+      note: z.string().optional(),
+    })
+    const data = schema.parse(req.body)
+    const product = await prisma.product.findFirst({ where: { id: data.productId, producerId } })
+    if (!product) return res.status(404).json({ error: 'Product not found' })
+    const property = await prisma.property.findFirst({ where: { id: data.propertyId, producerId } })
+    if (!property) return res.status(404).json({ error: 'Property not found' })
+
+    const result = await prisma.$transaction(async (tx) => {
+      const stockItem = await tx.stockItem.upsert({
+        where: { producerId_productId_propertyId: { producerId, productId: data.productId, propertyId: data.propertyId } },
+        create: { producerId, productId: data.productId, propertyId: data.propertyId, quantity: data.quantity },
+        update: { quantity: { increment: data.quantity } },
+      })
+      const movement = await tx.stockMovement.create({
+        data: {
+          stockItemId: stockItem.id,
+          type: 'IN',
+          quantity: data.quantity,
+          unitCost: data.unitCost,
+          date: new Date(data.date),
+          note: data.note,
+        },
+      })
+      return { stockItem, movement }
+    })
+    res.status(201).json(result)
+  } catch (err) { next(err) }
+})
+
+router.get('/stock/movements', async (req: AuthRequest, res, next) => {
+  try {
+    const producerId = getProducerId(req)
+    const { productId, propertyId } = req.query
+    const movements = await prisma.stockMovement.findMany({
+      where: {
+        stockItem: {
+          producerId,
+          ...(productId ? { productId: String(productId) } : {}),
+          ...(propertyId ? { propertyId: String(propertyId) } : {}),
+        },
+      },
+      include: {
+        stockItem: { include: { product: true, property: { select: { name: true } } } },
+      },
+      orderBy: { date: 'desc' },
+      take: 100,
+    })
+    res.json(movements)
+  } catch (err) { next(err) }
+})
+
+// ─── Activities (atividades da safra) ────────────────────────────────────────
+
+router.get('/activities', async (req: AuthRequest, res, next) => {
+  try {
+    const producerId = getProducerId(req)
+    const { harvestId, plotId } = req.query
+    const where: any = { harvest: { property: { producerId } } }
+    if (harvestId) where.harvestId = String(harvestId)
+    if (plotId) where.plotId = String(plotId)
+    const activities = await prisma.activity.findMany({
+      where,
+      include: {
+        harvest: { select: { crop: true, year: true } },
+        plot: { select: { name: true } },
+        items: { include: { product: true } },
+      },
+      orderBy: { date: 'desc' },
+    })
+    res.json(activities)
+  } catch (err) { next(err) }
+})
+
+router.post('/activities', async (req: AuthRequest, res, next) => {
+  try {
+    const producerId = getProducerId(req)
+    const schema = z.object({
+      harvestId: z.string(),
+      plotId: z.string().optional(),
+      type: z.nativeEnum(ActivityType),
+      date: z.string(),
+      hectares: z.number().positive().optional(),
+      notes: z.string().optional(),
+      items: z.array(z.object({
+        productId: z.string(),
+        quantity: z.number().positive(),
+        unit: z.nativeEnum(ProductUnit),
+      })).optional(),
+    })
+    const data = schema.parse(req.body)
+    const harvest = await prisma.harvest.findFirst({ where: { id: data.harvestId, property: { producerId } } })
+    if (!harvest) return res.status(404).json({ error: 'Harvest not found' })
+
+    const result = await prisma.$transaction(async (tx) => {
+      const activity = await tx.activity.create({
+        data: {
+          harvestId: data.harvestId,
+          plotId: data.plotId,
+          type: data.type,
+          date: new Date(data.date),
+          hectares: data.hectares,
+          notes: data.notes,
+          items: data.items?.length
+            ? { create: data.items.map((i) => ({ productId: i.productId, quantity: i.quantity, unit: i.unit })) }
+            : undefined,
+        },
+        include: { items: { include: { product: true } }, plot: { select: { name: true } } },
+      })
+
+      // Deduzir produtos do estoque
+      if (data.items?.length) {
+        for (const item of data.items) {
+          const stockItem = await tx.stockItem.findFirst({
+            where: { producerId, productId: item.productId, propertyId: harvest.propertyId },
+          })
+          if (stockItem) {
+            await tx.stockItem.update({
+              where: { id: stockItem.id },
+              data: { quantity: { decrement: item.quantity } },
+            })
+            await tx.stockMovement.create({
+              data: {
+                stockItemId: stockItem.id,
+                type: 'OUT',
+                quantity: item.quantity,
+                date: new Date(data.date),
+                activityId: activity.id,
+                note: `Atividade: ${data.type}`,
+              },
+            })
+          }
+        }
+      }
+      return activity
+    })
+    res.status(201).json(result)
+  } catch (err) { next(err) }
+})
+
+router.delete('/activities/:id', async (req: AuthRequest, res, next) => {
+  try {
+    const producerId = getProducerId(req)
+    const activity = await prisma.activity.findFirst({
+      where: { id: req.params.id, harvest: { property: { producerId } } },
+      include: { items: true, harvest: true },
+    })
+    if (!activity) return res.status(404).json({ error: 'Activity not found' })
+
+    await prisma.$transaction(async (tx) => {
+      // Reverter estoque
+      for (const item of activity.items) {
+        const stockItem = await tx.stockItem.findFirst({
+          where: { producerId, productId: item.productId, propertyId: activity.harvest.propertyId },
+        })
+        if (stockItem) {
+          await tx.stockItem.update({
+            where: { id: stockItem.id },
+            data: { quantity: { increment: item.quantity } },
+          })
+          await tx.stockMovement.deleteMany({ where: { activityId: activity.id } })
+        }
+      }
+      await tx.activity.delete({ where: { id: req.params.id } })
+    })
+    res.status(204).send()
+  } catch (err) { next(err) }
+})
 
 export default router

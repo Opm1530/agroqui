@@ -3,14 +3,15 @@
 import { useState } from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
-import { LayoutDashboard, Leaf, FileText, MapPin, Settings, CreditCard, LogOut } from 'lucide-react'
+import { LayoutDashboard, Leaf, FileText, Package, Tractor, Settings, CreditCard, LogOut } from 'lucide-react'
 import { clearAuth } from '@/lib/auth'
 
 const tabs = [
-  { href: '/dashboard',            icon: LayoutDashboard, label: 'Início',       exact: true },
-  { href: '/dashboard/harvests',   icon: Leaf,            label: 'Safras',       exact: false },
-  { href: '/dashboard/entries',    icon: FileText,        label: 'Lançamentos',  exact: false },
-  { href: '/dashboard/properties', icon: MapPin,          label: 'Propriedades', exact: false },
+  { href: '/dashboard',              icon: LayoutDashboard, label: 'Início',      exact: true },
+  { href: '/dashboard/harvests',     icon: Leaf,            label: 'Safras',      exact: false },
+  { href: '/dashboard/activities',   icon: Tractor,         label: 'Atividades',  exact: false },
+  { href: '/dashboard/stock',        icon: Package,         label: 'Estoque',     exact: false },
+  { href: '/dashboard/entries',      icon: FileText,        label: 'Lançamentos', exact: false },
 ]
 
 export function MobileBottomNav() {
