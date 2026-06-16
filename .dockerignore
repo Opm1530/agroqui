@@ -1,0 +1,21 @@
+# Deps locais — o Docker instala os próprios
+node_modules
+apps/*/node_modules
+
+# Build artifacts locais
+apps/web/.next
+apps/api/dist
+apps/api/tsconfig.tsbuildinfo
+
+# Dev / IDE
+.env*
+.git
+.gitignore
+*.md
+*.log
+.DS_Store
+
+# Testes e coverage
+coverage
+**/*.test.ts
+**/*.spec.ts
