@@ -17,6 +17,8 @@ COPY apps/web/ ./apps/web/
 ENV API_URL=http://api:3001
 
 WORKDIR /app/apps/web
+# Limit Node.js heap to avoid OOM on small VPS during next build
+ENV NODE_OPTIONS="--max-old-space-size=512"
 RUN npm run build
 
 # ── Stage 2: Runner ────────────────────────────────────────────────────────────
