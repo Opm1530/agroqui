@@ -130,8 +130,26 @@ const adminUserSchema = z.object({
 router.get('/users', async (req, res, next) => {
   try {
     const users = await prisma.user.findMany({
-      where: { role: { in: [UserRole.ADMIN, UserRole.SUPER_ADMIN] } },
-      select: { id: true, name: true, email: true, role: true, isActive: true, createdAt: true },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        role: true,
+        isActive: true,
+        createdAt: true,
+        producer: {
+          select: {
+            id: true,
+            whatsapp: true,
+            _count: { select: { properties: true } },
+            subscriptions: {
+              select: { status: true, plan: { select: { name: true } } },
+              orderBy: { createdAt: 'desc' },
+              take: 1,
+            },
+          },
+        },
+      },
       orderBy: { createdAt: 'desc' },
     })
     res.json(users)
@@ -169,6 +187,42 @@ router.put('/users/:id', requireSuperAdmin, async (req, res, next) => {
       select: { id: true, name: true, email: true, role: true, isActive: true },
     })
     res.json(user)
+  } catch (err) {
+    next(err)
+  }
+})
+
+// ─── Reset producer data (keep user + whatsapp + subscriptions) ──────────────
+
+router.post('/producers/:id/reset', requireSuperAdmin, async (req, res, next) => {
+  try {
+    const producer = await prisma.producer.findUnique({
+      where: { id: req.params.id },
+      include: { properties: { include: { harvests: true } } },
+    })
+    if (!producer) return res.status(404).json({ error: 'Produtor não encontrado' })
+
+    await prisma.$transaction(async (tx) => {
+      for (const prop of producer.properties) {
+        for (const harvest of prop.harvests) {
+          await tx.entry.deleteMany({ where: { harvestId: harvest.id } })
+          await tx.activity.deleteMany({ where: { harvestId: harvest.id } })
+        }
+        await tx.harvest.deleteMany({ where: { propertyId: prop.id } })
+        await tx.plot.deleteMany({ where: { propertyId: prop.id } })
+        const stockItems = await tx.stockItem.findMany({ where: { propertyId: prop.id }, select: { id: true } })
+        await tx.stockMovement.deleteMany({ where: { stockItemId: { in: stockItems.map((s) => s.id) } } })
+        await tx.stockItem.deleteMany({ where: { propertyId: prop.id } })
+        await tx.property.delete({ where: { id: prop.id } })
+      }
+      await tx.product.deleteMany({ where: { producerId: producer.id } })
+      await tx.document.deleteMany({ where: { producerId: producer.id } })
+      await tx.alert.deleteMany({ where: { producerId: producer.id } })
+      await tx.agentSession.deleteMany({ where: { producerId: producer.id } })
+      // PriceIndex is global/shared, no producerId — skip
+    })
+
+    res.json({ message: 'Dados do produtor zerados com sucesso' })
   } catch (err) {
     next(err)
   }

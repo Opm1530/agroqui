@@ -6,7 +6,7 @@ import { uploadBuffer, buildKey } from '../services/s3.service'
 import { downloadMedia } from '../services/evolution.service'
 import { getSetting, SettingKeys } from '../services/settings.service'
 import { lookupSupplier } from '../services/cnpj.service'
-import { DocumentType, DocumentStatus, EntryCategory, EntryType, HarvestStatus } from '@prisma/client'
+import { DocumentType, DocumentStatus, EntryCategory, EntryType, HarvestStatus, ProductUnit, StockMovementType } from '@prisma/client'
 // pdf-parse v2 uses class-based API: new PDFParse({ data: buffer }).getText()
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const { PDFParse } = require('pdf-parse') as { PDFParse: new (opts: { data: Buffer }) => { getText(): Promise<{ text: string }> } }
@@ -37,18 +37,6 @@ function buildWhatsappVariants(number: string): string[] {
   return [...variants]
 }
 
-// ── Pending invoice stored in session messages ────────────────────────────────
-// role: 'pending_invoice', content: JSON string of PendingInvoice
-interface PendingInvoice {
-  amount: number
-  supplier?: string | null
-  date?: string | null
-  category: string
-  description?: string | null
-  documentId: string
-  plotId?: string | null
-}
-
 const router = Router()
 
 // Evolution API v2 webhook
@@ -76,11 +64,6 @@ router.post('/whatsapp', async (req: Request, res: Response) => {
 
     const from: string = data?.key?.remoteJid?.replace('@s.whatsapp.net', '') ?? ''
     if (!from) return
-
-    // ── Detect interactive button / list responses ────────────────────────────
-    const selectedId: string | undefined =
-      message?.buttonsResponseMessage?.selectedButtonId ??
-      message?.listResponseMessage?.singleSelectReply?.selectedRowId
 
     // Build WhatsApp number variants to handle Brazil's 9th-digit ambiguity.
     // Some carriers/devices send 12-digit numbers (without 9), others send 13.
@@ -140,30 +123,6 @@ router.post('/whatsapp', async (req: Request, res: Response) => {
     const plots = producer.properties.flatMap((p) =>
       p.plots.map((pl) => ({ id: pl.id, name: pl.name }))
     )
-
-    // ── Handle harvest-selection via interactive button (legacy) ─────────────
-    if (selectedId?.startsWith('HARVEST_')) {
-      const harvestId = selectedId.replace('HARVEST_', '')
-      await handleHarvestSelected(from, producer.id, harvestId, session, sessionMessages)
-      return
-    }
-
-    // ── Handle harvest-selection via numbered text reply ──────────────────────
-    const pendingInSession = sessionMessages.find((m) => (m as any).role === 'pending_invoice')
-    if (pendingInSession) {
-      const rawText = (message?.conversation ?? message?.extendedTextMessage?.text ?? '').trim()
-      const choiceNum = parseInt(rawText, 10)
-      if (!isNaN(choiceNum) && choiceNum >= 1) {
-        // User replied with a number to select harvest
-        const harvestIdx = choiceNum - 1
-        if (harvestIdx < activeHarvests.length) {
-          await handleHarvestSelected(from, producer.id, activeHarvests[harvestIdx].id, session, sessionMessages)
-        } else {
-          await sendText(from, `⚠️ Opção inválida. Responda com um número entre 1 e ${activeHarvests.length}.`)
-        }
-        return
-      }
-    }
 
     // ── Determine message type ────────────────────────────────────────────────
     // Evolution API v2: instance name is at payload ROOT, not inside data
@@ -382,49 +341,25 @@ router.post('/whatsapp', async (req: Request, res: Response) => {
           ncmCodes
         )
 
-        // ── Ask producer which harvest this invoice belongs to ───────────
-        if (activeHarvests.length > 1) {
-          // Store pending invoice in session
-          const pending: PendingInvoice = {
-            amount: invoiceData.amount ?? 0,
-            supplier: invoiceData.supplier ?? null,
-            date: invoiceData.date ?? null,
-            category,
-            description: invoiceData.items?.map((i) => i.description).join(', ') ?? null,
-            documentId: document.id,
-            plotId: null,
-          }
+        // ── Add invoice items to stock ────────────────────────────────────
+        const property = producer.properties[0]
+        const stockResults = await addInvoiceToStock(producer.id, property?.id ?? '', invoiceData, document.id)
 
-          const updatedMessages: AgentMessage[] = [
-            ...sessionMessages.filter((m) => (m as any).role !== 'pending_invoice'),
-            { role: 'pending_invoice' as any, content: JSON.stringify(pending) },
-          ].slice(-40)
+        const fmt = (v: number) => `R$ ${v.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`
+        const itemLines = stockResults.length
+          ? stockResults.map((r) => `• ${r.name}: ${r.qty} ${r.unit}`).join('\n')
+          : `• ${invoiceData.rawText ?? 'Item sem descrição'}`
 
-          if (session) {
-            await prisma.agentSession.update({ where: { id: session.id }, data: { messages: updatedMessages as any } })
-          } else {
-            await prisma.agentSession.create({ data: { producerId: producer.id, messages: updatedMessages as any } })
-          }
-
-          // Format invoice summary for the question
-          const fmt = (v: number) => `R$ ${v.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`
-          const invoiceSummary =
-            `📄 *Nota fiscal processada*\n` +
-            (invoiceData.supplier ? `🏪 Fornecedor: ${invoiceData.supplier}\n` : '') +
-            `💵 Valor: ${fmt(invoiceData.amount ?? 0)}\n` +
-            (invoiceData.date ? `📅 Data: ${invoiceData.date}\n` : '') +
-            `\n*Para qual safra devo registrar?*`
-
-          // Send numbered list — works on all WhatsApp clients (Web, phone, etc.)
-          const harvestList = activeHarvests
-            .map((h, i) => `${i + 1}️⃣ ${h.crop} ${h.year} — ${h.propertyName}`)
-            .join('\n')
-          await sendText(from, `${invoiceSummary}\n\n${harvestList}\n\n_Responda com o número da safra._`)
-          return
-        }
-
-        // Single harvest — continue to agent as before
-        userMessageText = `[OCR Result: Supplier: ${invoiceData.supplier ?? 'unknown'}, Amount: R$${invoiceData.amount ?? 0}, Date: ${invoiceData.date ?? 'unknown'}, Items: ${invoiceData.rawText ?? ''}, Suggested category: ${category}]`
+        await sendText(
+          from,
+          `✅ *Nota fiscal adicionada ao estoque!*\n\n` +
+          (invoiceData.supplier ? `🏪 ${invoiceData.supplier}\n` : '') +
+          `💵 Total: ${fmt(invoiceData.amount ?? 0)}\n` +
+          (invoiceData.date ? `📅 ${invoiceData.date}\n` : '') +
+          `\n*Itens no estoque:*\n${itemLines}\n\n` +
+          `_Para usar estes itens em uma safra, registre uma atividade no painel._`
+        )
+        return
       } catch (ocrErr) {
         console.error('[webhook] OCR processing failed:', ocrErr)
         await sendText(
@@ -478,91 +413,96 @@ router.post('/whatsapp', async (req: Request, res: Response) => {
   }
 })
 
-// ── Handle harvest selected via WhatsApp button / list ────────────────────────
-async function handleHarvestSelected(
-  from: string,
+// ── Map invoice unit string to ProductUnit enum ───────────────────────────────
+function toProductUnit(unit?: string): ProductUnit {
+  switch ((unit ?? '').toLowerCase()) {
+    case 'l': case 'liter': case 'litro': case 'litros': return ProductUnit.LITER
+    case 'kg': return ProductUnit.KG
+    case 'sc60kg': case 'saca': case 'sacas': return ProductUnit.SACA_60KG
+    case 't': case 'ton': case 'tonelada': return ProductUnit.TONELADA
+    default: return ProductUnit.UNIDADE
+  }
+}
+
+// ── Add invoice items to stock (new primary OCR flow) ────────────────────────
+async function addInvoiceToStock(
   producerId: string,
-  harvestId: string,
-  session: any,
-  sessionMessages: AgentMessage[]
-): Promise<void> {
-  try {
-    // Retrieve pending invoice from session
-    const pendingMsg = sessionMessages.find((m) => (m as any).role === 'pending_invoice')
-    if (!pendingMsg) {
-      await sendText(from, '⚠️ Não encontrei uma nota fiscal pendente. Envie a foto novamente.')
-      return
+  propertyId: string,
+  invoiceData: InvoiceData,
+  documentId: string
+): Promise<Array<{ name: string; qty: number; unit: string }>> {
+  const results: Array<{ name: string; qty: number; unit: string }> = []
+  const date = invoiceData.date ? new Date(invoiceData.date) : new Date()
+
+  const items = invoiceData.items?.filter((i) => i.product || i.description) ?? []
+
+  if (!items.length) {
+    // No line items — create a single generic stock entry using rawText
+    const name = invoiceData.rawText ?? 'Item sem descrição'
+    const ncm = undefined
+    const category = await classifyEntry(name, invoiceData.supplier).catch(() => EntryCategory.OTHER_EXPENSE)
+    const unit = ProductUnit.UNIDADE
+
+    const product = await prisma.product.upsert({
+      where: { producerId_name: { producerId, name } } as any,
+      update: {},
+      create: { producerId, name, unit, category, isActive: true },
+    }).catch(() => prisma.product.findFirst({ where: { producerId, name } }))
+
+    if (product && propertyId) {
+      const stockItem = await prisma.stockItem.upsert({
+        where: { producerId_productId_propertyId: { producerId, productId: product.id, propertyId } },
+        update: { quantity: { increment: 1 } },
+        create: { producerId, productId: product.id, propertyId, quantity: 1 },
+      })
+      await prisma.stockMovement.create({
+        data: { stockItemId: stockItem.id, type: StockMovementType.IN, quantity: 1, unitCost: invoiceData.amount ?? null, date, note: `NF WhatsApp: ${invoiceData.supplier ?? ''}`, entryId: null },
+      })
+    }
+    results.push({ name, qty: 1, unit: 'unid' })
+    return results
+  }
+
+  for (const item of items) {
+    const name = item.product ?? item.description ?? 'Produto'
+    const qty = item.quantity ?? 1
+    const unit = toProductUnit(item.unit)
+    const category = await classifyEntry(item.description ?? name, invoiceData.supplier).catch(() => EntryCategory.OTHER_EXPENSE)
+
+    // Find or create product for this producer
+    let product = await prisma.product.findFirst({ where: { producerId, name } })
+    if (!product) {
+      product = await prisma.product.create({ data: { producerId, name, unit, category, isActive: true } })
     }
 
-    const pending: PendingInvoice = JSON.parse(pendingMsg.content)
+    if (!propertyId) {
+      results.push({ name, qty, unit: item.unit ?? 'unid' })
+      continue
+    }
 
-    // Validate harvest belongs to this producer
-    const harvest = await prisma.harvest.findFirst({
-      where: { id: harvestId, property: { producerId } },
-      include: { property: { select: { name: true } } },
+    // Upsert stock item and add IN movement
+    const stockItem = await prisma.stockItem.upsert({
+      where: { producerId_productId_propertyId: { producerId, productId: product.id, propertyId } },
+      update: { quantity: { increment: qty } },
+      create: { producerId, productId: product.id, propertyId, quantity: qty },
     })
-    if (!harvest) {
-      await sendText(from, '⚠️ Safra não encontrada. Tente novamente.')
-      return
-    }
 
-    const category = EntryCategory[pending.category as keyof typeof EntryCategory] ?? EntryCategory.OTHER_EXPENSE
-    const isIncome = (category as string === EntryCategory.PRODUCTION_SALE || category as string === EntryCategory.OTHER_INCOME)
-    const parsedDate = pending.date ? new Date(pending.date) : null
-    const entryDate = parsedDate && !isNaN(parsedDate.getTime()) ? parsedDate : new Date()
-
-    // Validate plotId
-    let plotId: string | null = pending.plotId && String(pending.plotId).trim() ? pending.plotId : null
-    if (plotId) {
-      const plot = await prisma.plot.findFirst({ where: { id: plotId, property: { producerId } } })
-      if (!plot) plotId = null
-    }
-
-    await prisma.entry.create({
+    await prisma.stockMovement.create({
       data: {
-        harvestId,
-        plotId,
-        category,
-        type: isIncome ? EntryType.INCOME : EntryType.EXPENSE,
-        amount: Number(pending.amount) || 0,
-        date: entryDate,
-        supplier: pending.supplier ?? null,
-        description: pending.description ?? null,
+        stockItemId: stockItem.id,
+        type: StockMovementType.IN,
+        quantity: qty,
+        unitCost: item.unitPrice ?? null,
+        date,
+        note: `NF WhatsApp: ${invoiceData.supplier ?? ''}`,
+        entryId: null,
       },
     })
 
-    // Clear pending from session
-    const updatedMessages: AgentMessage[] = sessionMessages
-      .filter((m) => (m as any).role !== 'pending_invoice')
-      .slice(-40)
-
-    if (session) {
-      await prisma.agentSession.update({ where: { id: session.id }, data: { messages: updatedMessages as any } })
-    }
-
-    const categoryLabels: Record<string, string> = {
-      FUEL: '⛽ Combustível', FERTILIZER: '🪨 Adubo', DEFENSIVE: '🌿 Defensivo',
-      SEED: '🌱 Semente', MACHINERY_MAINTENANCE: '🔧 Manutenção', LABOR: '👷 Mão de Obra',
-      LEASE: '🏡 Arrendamento', FREIGHT_DRYING: '🚛 Frete/Secagem',
-      PRODUCTION_SALE: '💰 Venda', OTHER_INCOME: '📈 Receita', OTHER_EXPENSE: '📋 Despesa',
-    }
-
-    const fmt = (v: number) => `R$ ${v.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`
-
-    await sendText(
-      from,
-      `✅ *Lançamento registrado!*\n\n` +
-      `📂 ${categoryLabels[category] ?? category}\n` +
-      `💵 ${isIncome ? '+' : '-'} ${fmt(Number(pending.amount))}\n` +
-      `📅 ${entryDate.toLocaleDateString('pt-BR')}\n` +
-      (pending.supplier ? `🏪 ${pending.supplier}\n` : '') +
-      `🌾 Safra: ${harvest.crop} ${harvest.year} — ${harvest.property.name}\n\n` +
-      `_Visualize no painel em /dashboard/entries_`
-    )
-  } catch (err) {
-    console.error('handleHarvestSelected error:', err)
-    await sendText(from, '❌ Erro ao registrar o lançamento. Tente novamente.')
+    results.push({ name, qty, unit: item.unit ?? 'unid' })
   }
+
+  return results
 }
 
 // Returns a confirmation string to replace the agent's reply, or null to keep the agent reply

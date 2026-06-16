@@ -79,7 +79,8 @@ router.get('/harvests', async (req: AuthRequest, res, next) => {
     const harvests = await prisma.harvest.findMany({
       where: { property: { producerId } },
       include: {
-        property: { select: { name: true } },
+        property: { select: { id: true, name: true } },
+        harvestPlots: { include: { plot: { select: { id: true, name: true, hectares: true } } } },
         _count: { select: { entries: true } },
       },
       orderBy: { createdAt: 'desc' },
@@ -124,6 +125,21 @@ router.put('/harvests/:id', async (req: AuthRequest, res, next) => {
     if (!harvest) return res.status(404).json({ error: 'Harvest not found' })
     const updated = await prisma.harvest.update({ where: { id: req.params.id }, data })
     res.json(updated)
+  } catch (err) { next(err) }
+})
+
+router.delete('/harvests/:id', async (req: AuthRequest, res, next) => {
+  try {
+    const producerId = getProducerId(req)
+    const harvest = await prisma.harvest.findFirst({
+      where: { id: req.params.id, property: { producerId } },
+    })
+    if (!harvest) return res.status(404).json({ error: 'Harvest not found' })
+    // Remove child records that don't have cascade configured
+    await prisma.entry.deleteMany({ where: { harvestId: req.params.id } })
+    await prisma.activity.deleteMany({ where: { harvestId: req.params.id } })
+    await prisma.harvest.delete({ where: { id: req.params.id } })
+    res.json({ ok: true })
   } catch (err) { next(err) }
 })
 
