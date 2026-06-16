@@ -6,12 +6,12 @@ WORKDIR /app
 # Copy only manifests first — Docker caches npm install until these change
 COPY package*.json ./
 COPY apps/api/package*.json ./apps/api/
-COPY apps/api/prisma/schema.prisma ./apps/api/prisma/schema.prisma
 
-# Install deps (cached unless package.json or schema changes)
+# Install deps (cached unless package.json changes)
 RUN npm install --workspace=@cdc/api --include-workspace-root
 
-# Generate Prisma client (cached with schema)
+# Copy schema separately so prisma generate is cached independently of npm install
+COPY apps/api/prisma/schema.prisma ./apps/api/prisma/schema.prisma
 RUN cd apps/api && npx prisma generate
 
 # Now copy source (cache miss only when code changes, not deps)
