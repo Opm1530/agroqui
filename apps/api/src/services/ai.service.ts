@@ -331,7 +331,8 @@ Se tiver valor e categoria, registre e informe o que assumiu.`
 
   const history: AgentMessage[] = [
     { role: 'system', content: systemPrompt },
-    ...messages.slice(-20), // last 20 messages for context
+    // Strip any internal session roles (pending_activity etc.) — OpenAI only accepts system/user/assistant
+    ...messages.filter((m) => ['user', 'assistant', 'system'].includes(m.role)).slice(-20),
     { role: 'user', content: userMessage },
   ]
 

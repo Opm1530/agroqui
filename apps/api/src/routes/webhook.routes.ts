@@ -156,6 +156,10 @@ router.post('/whatsapp', async (req: Request, res: Response) => {
         }
         return
       }
+
+      // User sent something unrecognized while we're waiting for confirmation — remind them
+      await sendText(from, '⏳ Aguardando confirmação da atividade.\nResponda *sim* para confirmar ou *não* para cancelar.')
+      return
     }
 
     // ── Determine message type ────────────────────────────────────────────────
