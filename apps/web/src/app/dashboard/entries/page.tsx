@@ -29,7 +29,7 @@ function categoryLabel(v: string) {
 function NewEntryModal({ harvests, plots, onClose }: { harvests: any[]; plots: any[]; onClose: () => void }) {
   const qc = useQueryClient()
   const { register, handleSubmit } = useForm({
-    defaultValues: { date: new Date().toISOString().split('T')[0] },
+    defaultValues: { date: new Date().toISOString().split('T')[0], harvestId: '', plotId: '', category: '', amount: '', supplier: '', description: '' },
   })
 
   const create = useMutation({
@@ -166,6 +166,9 @@ export default function EntriesPage() {
                 {entry.harvest?.crop} {entry.harvest?.year}
                 {entry.plot && ` · ${entry.plot.name}`}
               </p>
+              {entry.description && (
+                <p className="text-xs text-gray-400 truncate mt-0.5">{entry.description}</p>
+              )}
             </div>
             <div className="text-right shrink-0">
               <p className={`font-semibold text-sm ${entry.type === 'INCOME' ? 'text-green-600' : 'text-red-600'}`}>

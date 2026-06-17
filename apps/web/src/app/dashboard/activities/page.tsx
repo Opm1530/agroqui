@@ -176,8 +176,9 @@ function NewActivityModal({ onClose }: { onClose: () => void }) {
                     value={item.productId}
                     onChange={(e) => {
                       const prod = (products ?? []).find((p: any) => p.id === e.target.value)
-                      updateItem(idx, 'productId', e.target.value)
-                      if (prod) updateItem(idx, 'unit', prod.unit)
+                      setItems((prev) => prev.map((it, i) =>
+                        i === idx ? { ...it, productId: e.target.value, unit: prod?.unit ?? it.unit } : it
+                      ))
                     }}
                     className="input flex-1"
                   >

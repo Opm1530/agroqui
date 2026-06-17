@@ -331,7 +331,10 @@ router.get('/dre/:harvestId', async (req: AuthRequest, res, next) => {
     const producerId = getProducerId(req)
     const harvest = await prisma.harvest.findFirst({
       where: { id: req.params.harvestId, property: { producerId } },
-      include: { property: true },
+      include: {
+        property: true,
+        harvestPlots: { include: { plot: { select: { id: true, name: true, hectares: true, boundary: true, color: true } } } },
+      },
     })
     if (!harvest) return res.status(404).json({ error: 'Harvest not found' })
 
@@ -353,8 +356,9 @@ router.get('/dre/:harvestId', async (req: AuthRequest, res, next) => {
       byCategory[e.category] = (byCategory[e.category] ?? 0) + e.amount
     }
 
-    // Cost per hectare
-    const hectares = harvest.property.hectares ?? 1
+    // Cost per hectare — prefer sum of harvestPlot hectares, fallback to property
+    const harvestHectares = harvest.harvestPlots.reduce((s, hp) => s + (hp.hectares ?? hp.plot.hectares ?? 0), 0)
+    const hectares = harvestHectares || harvest.property.hectares || 1
     const costPerHa = totalExpenses / hectares
 
     res.json({
@@ -366,6 +370,7 @@ router.get('/dre/:harvestId', async (req: AuthRequest, res, next) => {
         propertyName: harvest.property.name,
         hectares,
         targetCostPerHa: harvest.targetCostPerHa,
+        plots: harvest.harvestPlots.map((hp) => hp.plot),
       },
       summary: {
         totalIncome,

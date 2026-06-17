@@ -62,29 +62,13 @@ export default function DrePage() {
     queryFn: () => api.get(`/producer/dre/${id}`).then((r) => r.data),
   })
 
-  // Fallback: se o DRE não retornar propertyId (servidor antigo), busca via lista de safras
-  const { data: harvests = [] } = useQuery({
-    queryKey: ['harvests'],
-    queryFn: () => api.get('/producer/harvests').then((r) => r.data),
-    enabled: !!dre && !dre?.harvest?.propertyId,
-  })
-  const propertyId: string | undefined =
-    dre?.harvest?.propertyId ??
-    (harvests as any[]).find((h: any) => h.id === id)?.propertyId
+  const propertyId: string | undefined = dre?.harvest?.propertyId
+  // Use only the plots linked to this harvest (from harvestPlots)
+  const plots: any[] = dre?.harvest?.plots ?? []
+  const plotsLoading = isLoading
 
-  const { data: plots = [], isLoading: plotsLoading } = useQuery({
-    queryKey: ['plots', propertyId],
-    queryFn: () =>
-      api.get('/producer/plots', { params: { propertyId } }).then((r) => r.data),
-    enabled: !!propertyId,
-  })
-
-  const { data: entries = [] } = useQuery({
-    queryKey: ['entries', id],
-    queryFn: () =>
-      api.get('/producer/entries', { params: { harvestId: id, limit: 8 } }).then((r) => r.data.entries ?? []),
-    enabled: !!id,
-  })
+  // Entries already included in DRE response (last 8)
+  const entries: any[] = (dre?.entries ?? []).slice(0, 8)
 
   if (isLoading) {
     return (
@@ -283,10 +267,10 @@ export default function DrePage() {
         {/* Right — Map */}
         <div className="card overflow-hidden flex flex-col">
           <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
-            <h2 className="font-bold text-gray-900">Talhões da Propriedade</h2>
-            {(plots as any[]).length > 0 && (
+            <h2 className="font-bold text-gray-900">Talhões da Safra</h2>
+            {plots.length > 0 && (
               <div className="flex items-center gap-2">
-                <span className="text-xs text-gray-400">{(plots as any[]).length} talhões</span>
+                <span className="text-xs text-gray-400">{plots.length} talhão{plots.length !== 1 ? 'ões' : ''} · {dre.harvest.hectares} ha</span>
                 {propertyId && (
                   <Link
                     href={`/dashboard/properties/${propertyId}/map`}
@@ -301,7 +285,7 @@ export default function DrePage() {
           <div className="flex-1 min-h-[340px] relative">
             {plotsLoading ? (
               <div className="absolute inset-0 bg-gray-100 animate-pulse" />
-            ) : (plots as any[]).length === 0 ? (
+            ) : plots.length === 0 ? (
               <div className="absolute inset-0 flex items-center justify-center flex-col gap-2 text-gray-300">
                 <Home className="w-10 h-10" />
                 <p className="text-sm font-medium">Nenhum talhão cadastrado</p>
@@ -312,19 +296,19 @@ export default function DrePage() {
                   Cadastrar talhões →
                 </Link>
               </div>
-            ) : (plots as any[]).every((p: any) => !p.boundary?.length) ? (
+            ) : plots.every((p: any) => !p.boundary?.length) ? (
               /* Talhões existem mas sem polígono desenhado */
               <div className="absolute inset-0 flex items-center justify-center flex-col gap-3 text-gray-300 p-6">
                 <MapPin className="w-10 h-10" />
                 <div className="text-center">
                   <p className="text-sm font-medium text-gray-500">
-                    {(plots as any[]).length} talhão{(plots as any[]).length > 1 ? 'ões' : ''} cadastrado{(plots as any[]).length > 1 ? 's' : ''}
+                    {plots.length} talhão{plots.length > 1 ? 'ões' : ''} cadastrado{plots.length > 1 ? 's' : ''}
                   </p>
                   <p className="text-xs text-gray-400 mt-0.5">Nenhum polígono desenhado ainda</p>
                 </div>
                 {/* Lista dos talhões */}
                 <div className="w-full max-w-xs space-y-1 mt-1">
-                  {(plots as any[]).map((p: any, i: number) => (
+                  {plots.map((p: any, i: number) => (
                     <div key={p.id} className="flex items-center gap-2 text-xs text-gray-500 bg-gray-50 rounded-lg px-3 py-1.5">
                       <span className="w-2 h-2 rounded-full bg-gray-300 shrink-0" />
                       <span className="font-medium">{p.name}</span>
