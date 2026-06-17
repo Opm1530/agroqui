@@ -468,10 +468,13 @@ router.post('/whatsapp', async (req: Request, res: Response) => {
 // ── Execute confirmed activity ────────────────────────────────────────────────
 async function executeActivity(producerId: string, data: any, from: string): Promise<void> {
   try {
+    console.log('[executeActivity] producerId:', producerId, '| data:', JSON.stringify(data))
+
     const harvest = await prisma.harvest.findFirst({
       where: { id: data.harvestId, property: { producerId } },
       select: { id: true, crop: true, year: true, propertyId: true, property: { select: { id: true, name: true } } },
     })
+    console.log('[executeActivity] harvest found:', harvest?.id ?? 'NOT FOUND')
     if (!harvest) {
       await sendText(from, '⚠️ Safra não encontrada. Atividade não registrada.')
       return
@@ -480,6 +483,7 @@ async function executeActivity(producerId: string, data: any, from: string): Pro
     const activityType = ActivityType[data.activityType as keyof typeof ActivityType] ?? ActivityType.OTHER
     const entryDate = data.date ? new Date(data.date) : new Date()
 
+    console.log('[executeActivity] creating activity type:', activityType, '| items:', data.items?.length ?? 0)
     const activity = await prisma.activity.create({
       data: {
         harvestId: harvest.id,
@@ -500,6 +504,8 @@ async function executeActivity(producerId: string, data: any, from: string): Pro
       },
       include: { items: { include: { product: true } } },
     })
+
+    console.log('[executeActivity] activity created:', activity.id, '| items:', activity.items.length)
 
     // Stock OUT + financial entry per item
     for (const item of activity.items) {
