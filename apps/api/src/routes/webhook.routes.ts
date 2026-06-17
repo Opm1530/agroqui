@@ -116,13 +116,45 @@ router.post('/whatsapp', async (req: Request, res: Response) => {
 
     const sessionMessages: AgentMessage[] = (session?.messages as unknown as AgentMessage[]) ?? []
 
-    // Compute harvests and plots context (needed for OCR flow and button handler)
+    // Compute harvests and plots context
     const activeHarvests = producer.properties.flatMap((p) =>
       p.harvests.map((h) => ({ id: h.id, crop: h.crop, year: h.year, propertyName: p.name }))
     )
     const plots = producer.properties.flatMap((p) =>
       p.plots.map((pl) => ({ id: pl.id, name: pl.name }))
     )
+
+    // Load products for activity matching
+    const products = await prisma.product.findMany({
+      where: { producerId: producer.id, isActive: true },
+      select: { id: true, name: true, unit: true },
+      orderBy: { name: 'asc' },
+    })
+
+    // ── Handle pending activity confirmation ──────────────────────────────────
+    const pendingActivity = sessionMessages.find((m) => (m as any).role === 'pending_activity')
+    if (pendingActivity) {
+      const rawText = (message?.conversation ?? message?.extendedTextMessage?.text ?? '').trim().toLowerCase()
+      const confirmed = ['sim', 's', '1', 'confirmar', 'confirma', 'ok', 'yes'].includes(rawText)
+      const cancelled = ['não', 'nao', 'n', '2', 'cancelar', 'cancela', 'no'].includes(rawText)
+
+      if (confirmed || cancelled) {
+        if (confirmed) {
+          await executeActivity(producer.id, JSON.parse(pendingActivity.content), from)
+        } else {
+          await sendText(from, '❌ Atividade cancelada.')
+        }
+
+        // Clear pending_activity from session
+        const updatedMessages = sessionMessages
+          .filter((m) => (m as any).role !== 'pending_activity')
+          .slice(-40)
+        if (session) {
+          await prisma.agentSession.update({ where: { id: session.id }, data: { messages: updatedMessages as any } })
+        }
+        return
+      }
+    }
 
     // ── Determine message type ────────────────────────────────────────────────
     // Evolution API v2: instance name is at payload ROOT, not inside data
@@ -378,22 +410,36 @@ router.post('/whatsapp', async (req: Request, res: Response) => {
     // Run AI agent
     const { reply: agentReply, action } = await runAgent(
       sessionMessages,
-      { producerName: producer.user.name, whatsapp: from, activeHarvests, plots },
+      { producerName: producer.user.name, whatsapp: from, activeHarvests, plots, products },
       userMessageText
     )
 
     // Execute action and get real confirmation message (overrides agent reply when applicable)
     let finalReply = agentReply
+    let pendingActivityData: any = null
+
     if (action) {
-      const actionMessage = await handleAgentAction(action, producer.id, from)
-      if (actionMessage) finalReply = actionMessage
+      if (action.type === 'PROPOSE_ACTIVITY') {
+        // Store proposal in session — wait for user confirmation
+        pendingActivityData = action.data
+        // finalReply comes from agent (already contains the confirmation prompt)
+      } else {
+        const actionMessage = await handleAgentAction(action, producer.id, from)
+        if (actionMessage) finalReply = actionMessage
+      }
     }
 
-    // Update session
-    const updatedMessages = [
-      ...sessionMessages,
+    // Update session — include pending_activity if agent proposed one
+    const baseMessages = [
+      ...sessionMessages.filter((m) => (m as any).role !== 'pending_activity'),
       { role: 'user' as const, content: userMessageText },
       { role: 'assistant' as const, content: finalReply },
+    ]
+    const updatedMessages = [
+      ...baseMessages,
+      ...(pendingActivityData
+        ? [{ role: 'pending_activity' as any, content: JSON.stringify(pendingActivityData) }]
+        : []),
     ].slice(-40)
 
     if (session) {
@@ -412,6 +458,95 @@ router.post('/whatsapp', async (req: Request, res: Response) => {
     console.error('Webhook error:', err)
   }
 })
+
+// ── Execute confirmed activity ────────────────────────────────────────────────
+async function executeActivity(producerId: string, data: any, from: string): Promise<void> {
+  try {
+    const { ActivityType } = await import('@prisma/client')
+
+    const harvest = await prisma.harvest.findFirst({
+      where: { id: data.harvestId, property: { producerId } },
+      include: { property: { select: { id: true, name: true } } },
+    })
+    if (!harvest) {
+      await sendText(from, '⚠️ Safra não encontrada. Atividade não registrada.')
+      return
+    }
+
+    const activityType = ActivityType[data.activityType as keyof typeof ActivityType] ?? ActivityType.OTHER
+    const entryDate = data.date ? new Date(data.date) : new Date()
+
+    const activity = await prisma.activity.create({
+      data: {
+        harvestId: harvest.id,
+        plotId: data.plotId ?? null,
+        type: activityType,
+        date: entryDate,
+        hectares: data.hectares ?? null,
+        notes: data.notes ?? null,
+        items: data.items?.length
+          ? {
+              create: data.items.map((item: any) => ({
+                productId: item.productId,
+                quantity: item.quantity,
+                unit: ProductUnit[item.unit as keyof typeof ProductUnit] ?? ProductUnit.UNIDADE,
+              })),
+            }
+          : undefined,
+      },
+      include: { items: { include: { product: true } } },
+    })
+
+    // Give stock OUT movements for each item
+    for (const item of activity.items) {
+      const stockItem = await prisma.stockItem.findFirst({
+        where: { producerId, productId: item.productId, propertyId: harvest.property.id },
+      })
+      if (stockItem) {
+        await prisma.stockMovement.create({
+          data: {
+            stockItemId: stockItem.id,
+            type: StockMovementType.OUT,
+            quantity: item.quantity,
+            date: entryDate,
+            note: `Atividade WhatsApp: ${data.activityType}`,
+            activityId: activity.id,
+          },
+        })
+        await prisma.stockItem.update({
+          where: { id: stockItem.id },
+          data: { quantity: { decrement: item.quantity } },
+        })
+      }
+    }
+
+    const typeLabels: Record<string, string> = {
+      PLANTING: '🌱 Plantio', APPLICATION: '🌿 Aplicação',
+      FUELING: '⛽ Abastecimento', HARVEST_OP: '🌾 Colheita', OTHER: '📋 Outro',
+    }
+    const unitLabels: Record<string, string> = {
+      LITER: 'L', KG: 'kg', SACA_60KG: 'sc 60kg', TONELADA: 't', UNIDADE: 'un',
+    }
+
+    const itemLines = activity.items
+      .map((it) => `• ${it.product.name}: ${it.quantity} ${unitLabels[it.unit] ?? it.unit}`)
+      .join('\n')
+
+    await sendText(
+      from,
+      `✅ *Atividade registrada!*\n\n` +
+      `${typeLabels[data.activityType] ?? data.activityType}\n` +
+      `🌾 ${harvest.crop} ${harvest.year}\n` +
+      `📅 ${entryDate.toLocaleDateString('pt-BR')}\n` +
+      (data.hectares ? `📐 ${data.hectares} ha\n` : '') +
+      (itemLines ? `\n*Produtos usados:*\n${itemLines}\n` : '') +
+      `\n_Visualize no painel em /dashboard/activities_`
+    )
+  } catch (err) {
+    console.error('executeActivity error:', err)
+    await sendText(from, '❌ Erro ao registrar a atividade. Tente novamente.')
+  }
+}
 
 // ── Map invoice unit string to ProductUnit enum ───────────────────────────────
 function toProductUnit(unit?: string): ProductUnit {

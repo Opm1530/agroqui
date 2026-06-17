@@ -236,6 +236,7 @@ export interface AgentContext {
   whatsapp: string
   activeHarvests: Array<{ id: string; crop: string; year: string; propertyName: string }>
   plots: Array<{ id: string; name: string }>
+  products: Array<{ id: string; name: string; unit: string }>
   recentBalance?: number
 }
 
@@ -254,6 +255,10 @@ export async function runAgent(
   const plotList = context.plots.length
     ? context.plots.map((p) => `"${p.id}" → ${p.name}`).join('\n')
     : 'nenhum talhão cadastrado'
+
+  const productList = context.products.length
+    ? context.products.map((p) => `"${p.id}" → ${p.name} (${p.unit})`).join('\n')
+    : 'nenhum produto no estoque'
 
   const systemPrompt = `Você é o Autoqui, assistente financeiro do Contador do Campo para produtores rurais brasileiros.
 Seu objetivo: ajudar o produtor a organizar as finanças da fazenda de forma simples e prática.
@@ -275,6 +280,9 @@ ${harvestList}
 Talhões (use o ID exato no plotId, ou omita se não souber):
 ${plotList}
 
+Produtos no estoque (use o ID exato no productId):
+${productList}
+
 ━━━ COMO REGISTRAR UM LANÇAMENTO ━━━
 Quando o produtor informar uma despesa ou receita com valor E data:
 1. Extraia todos os dados que conseguir
@@ -291,6 +299,24 @@ PRODUCTION_SALE (venda de grãos - RECEITA), OTHER_INCOME (outra receita), OTHER
 
 Tag de ação para REGISTRAR (inclua no corpo da mensagem):
 <action>{"type":"REGISTER_ENTRY","data":{"harvestId":"ID_EXATO_AQUI","plotId":null,"category":"FUEL","amount":2300,"date":"2026-04-28","supplier":"Posto Xará","description":"Diesel S10 - 343L a R$6,70/L"}}</action>
+
+━━━ COMO REGISTRAR UMA ATIVIDADE ━━━
+Quando o produtor descrever uma atividade de campo (plantio, aplicação, abastecimento, colheita):
+1. Identifique o tipo: PLANTING (plantio), APPLICATION (aplicação de defensivo/fertilizante), FUELING (abastecimento), HARVEST_OP (colheita), OTHER
+2. Identifique a safra, talhão (se mencionado), data, hectares trabalhados e produtos usados
+3. Para cada produto mencionado, encontre o ID mais próximo na lista de produtos do estoque
+4. NÃO registre diretamente — envie uma proposta para o produtor confirmar:
+
+Tag de ação para PROPOR ATIVIDADE (inclua no corpo da mensagem):
+<action>{"type":"PROPOSE_ACTIVITY","data":{"harvestId":"ID_EXATO","plotId":null,"activityType":"APPLICATION","date":"2026-06-16","hectares":null,"notes":"Aplicação de Glifosato","items":[{"productId":"ID_EXATO","productName":"Glifosato 480","quantity":10,"unit":"LITER"}]}}</action>
+
+Após incluir a tag, envie um resumo amigável pedindo confirmação. Exemplo:
+"🌱 *Atividade identificada:*
+📋 Aplicação — Soja 2025/26
+📅 16/06/2026
+🧴 Glifosato 480: 10 L
+
+Confirma? Responda *sim* para registrar ou *não* para cancelar."
 
 ━━━ COMO GERAR RELATÓRIO / VER SALDO ━━━
 Quando o produtor pedir relatório, DRE, despesas ou saldo:
@@ -335,6 +361,7 @@ Se tiver valor e categoria, registre e informe o que assumiu.`
 
 export type AgentAction =
   | { type: 'REGISTER_ENTRY'; data: { harvestId: string; plotId?: string; category: string; amount: number; date: string; supplier?: string; description?: string } }
+  | { type: 'PROPOSE_ACTIVITY'; data: { harvestId: string; plotId?: string; activityType: string; date: string; hectares?: number; notes?: string; items: Array<{ productId: string; productName: string; quantity: number; unit: string }> } }
   | { type: 'GENERATE_REPORT'; harvestId: string }
   | { type: 'SHOW_BALANCE' }
   | { type: 'LIST_HARVESTS' }
