@@ -6,7 +6,7 @@ import { uploadBuffer, buildKey } from '../services/s3.service'
 import { downloadMedia } from '../services/evolution.service'
 import { getSetting, SettingKeys } from '../services/settings.service'
 import { lookupSupplier } from '../services/cnpj.service'
-import { DocumentType, DocumentStatus, EntryCategory, EntryType, HarvestStatus, ProductUnit, StockMovementType } from '@prisma/client'
+import { DocumentType, DocumentStatus, EntryCategory, EntryType, HarvestStatus, ProductUnit, StockMovementType, ActivityType } from '@prisma/client'
 // pdf-parse v2 uses class-based API: new PDFParse({ data: buffer }).getText()
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const { PDFParse } = require('pdf-parse') as { PDFParse: new (opts: { data: Buffer }) => { getText(): Promise<{ text: string }> } }
@@ -140,7 +140,9 @@ router.post('/whatsapp', async (req: Request, res: Response) => {
 
       if (confirmed || cancelled) {
         if (confirmed) {
-          await executeActivity(producer.id, JSON.parse(pendingActivity.content), from)
+          const activityData = JSON.parse(pendingActivity.content)
+          console.log('[executeActivity] data:', JSON.stringify(activityData))
+          await executeActivity(producer.id, activityData, from)
         } else {
           await sendText(from, '❌ Atividade cancelada.')
         }
@@ -462,11 +464,9 @@ router.post('/whatsapp', async (req: Request, res: Response) => {
 // ── Execute confirmed activity ────────────────────────────────────────────────
 async function executeActivity(producerId: string, data: any, from: string): Promise<void> {
   try {
-    const { ActivityType } = await import('@prisma/client')
-
     const harvest = await prisma.harvest.findFirst({
       where: { id: data.harvestId, property: { producerId } },
-      include: { property: { select: { id: true, name: true } } },
+      select: { id: true, crop: true, year: true, propertyId: true, property: { select: { id: true, name: true } } },
     })
     if (!harvest) {
       await sendText(from, '⚠️ Safra não encontrada. Atividade não registrada.')
