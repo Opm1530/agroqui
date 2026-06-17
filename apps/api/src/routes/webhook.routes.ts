@@ -497,7 +497,7 @@ async function executeActivity(producerId: string, data: any, from: string): Pro
       include: { items: { include: { product: true } } },
     })
 
-    // Give stock OUT movements for each item
+    // Stock OUT + financial entry per item
     for (const item of activity.items) {
       const stockItem = await prisma.stockItem.findFirst({
         where: { producerId, productId: item.productId, propertyId: harvest.property.id },
@@ -516,6 +516,32 @@ async function executeActivity(producerId: string, data: any, from: string): Pro
         await prisma.stockItem.update({
           where: { id: stockItem.id },
           data: { quantity: { decrement: item.quantity } },
+        })
+      }
+
+      // Custo médio ponderado das entradas de estoque
+      const inMovements = stockItem
+        ? await prisma.stockMovement.findMany({
+            where: { stockItemId: stockItem.id, type: StockMovementType.IN, unitCost: { not: null } },
+          })
+        : []
+      const avgUnitCost = inMovements.length
+        ? inMovements.reduce((s, m) => s + (m.unitCost ?? 0) * m.quantity, 0) /
+          inMovements.reduce((s, m) => s + m.quantity, 0)
+        : 0
+
+      const amount = avgUnitCost * item.quantity
+      if (amount > 0) {
+        await prisma.entry.create({
+          data: {
+            harvestId: harvest.id,
+            plotId: data.plotId ?? null,
+            category: (item.product.category ?? EntryCategory.OTHER_EXPENSE) as EntryCategory,
+            type: EntryType.EXPENSE,
+            amount,
+            date: entryDate,
+            description: `${item.product.name} — ${item.quantity} ${item.unit.toLowerCase()} (atividade)`,
+          },
         })
       }
     }

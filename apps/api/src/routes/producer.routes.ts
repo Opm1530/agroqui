@@ -689,12 +689,14 @@ router.post('/activities', async (req: AuthRequest, res, next) => {
         include: { items: { include: { product: true } }, plot: { select: { name: true } } },
       })
 
-      // Deduzir produtos do estoque
+      // Deduzir estoque e criar lançamento financeiro por produto
       if (data.items?.length) {
         for (const item of data.items) {
+          const product = activity.items.find((ai) => ai.productId === item.productId)?.product
           const stockItem = await tx.stockItem.findFirst({
             where: { producerId, productId: item.productId, propertyId: harvest.propertyId },
           })
+
           if (stockItem) {
             await tx.stockItem.update({
               where: { id: stockItem.id },
@@ -708,6 +710,32 @@ router.post('/activities', async (req: AuthRequest, res, next) => {
                 date: new Date(data.date),
                 activityId: activity.id,
                 note: `Atividade: ${data.type}`,
+              },
+            })
+          }
+
+          // Calcular custo médio ponderado das entradas de estoque
+          const inMovements = stockItem
+            ? await tx.stockMovement.findMany({
+                where: { stockItemId: stockItem.id, type: 'IN', unitCost: { not: null } },
+              })
+            : []
+          const avgUnitCost = inMovements.length
+            ? inMovements.reduce((s, m) => s + (m.unitCost ?? 0) * m.quantity, 0) /
+              inMovements.reduce((s, m) => s + m.quantity, 0)
+            : 0
+
+          const amount = avgUnitCost * item.quantity
+          if (amount > 0) {
+            await tx.entry.create({
+              data: {
+                harvestId: data.harvestId,
+                plotId: data.plotId ?? null,
+                category: (product?.category ?? EntryCategory.OTHER_EXPENSE) as EntryCategory,
+                type: EntryType.EXPENSE,
+                amount,
+                date: new Date(data.date),
+                description: `${product?.name ?? 'Produto'} — ${item.quantity} ${item.unit.toLowerCase()} (atividade)`,
               },
             })
           }
